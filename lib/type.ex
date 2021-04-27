@@ -134,6 +134,14 @@ defmodule EctoEntity.Type do
   end
 
   @spec migration_set(type :: t, callback :: fun()) :: t
+  def migration_defaults!(%{migrations: migrations} = type, callback) do
+    if migrations == [] do
+    else
+      raise "Cannot set migration defaults on a type with pre-existing migrations."
+    end
+  end
+
+  @spec migration_set(type :: t, callback :: fun()) :: t
   def migration_set(%{migrations: migrations} = type, callback) do
     migration = %{
       id: new_uuid(),
@@ -142,6 +150,8 @@ defmodule EctoEntity.Type do
     }
 
     %{type | migrations: migrations ++ [migration]}
+    |> migrations_to_fields()
+    |> migrations_to_changesets()
   end
 
   @persistence_options [
@@ -196,6 +206,45 @@ defmodule EctoEntity.Type do
     }
 
     [migration_set_item | migration_set]
+  end
+
+  def add_timestamps(type) when is_map(type) do
+    migration_set(type, fn set ->
+      add_timestamps(set)
+    end)
+  end
+
+  def add_timestamps(migration_set) when is_list(migration_set) do
+    migration_set_item = %{
+      type: "add_timestamps"
+    }
+
+    [migration_set_item | migration_set]
+  end
+
+  defp migrations_to_fields(type) do
+    fields =
+      Enum.reduce(type.migrations, %{}, fn migration, fields ->
+        # msi - migration_set_item
+        Enum.reduce(migration.set, fields, &migration_set_item_to_field/2)
+      end)
+
+    %{type | fields: fields}
+  end
+
+  defp migration_set_item_to_field(%{type: "add_field"} = item, fields) do
+    Map.put(fields, item.identifier, item.field_type)
+  end
+
+  defp migration_set_item_to_field(%{type: "add_timestamps"}, fields) do
+    fields
+    |> Map.put("inserted_at", "naive_datetime")
+    |> Map.put("updated_at", "naive_datetime")
+  end
+
+  # TODO: implement
+  defp migrations_to_changesets(type) do
+    type
   end
 
   # TODO: it lies!
