@@ -61,7 +61,23 @@ defmodule EctoEntityTest do
              ]
            } = migration
 
-    assert %{"title" => "string"} == fields
+    assert %{
+             "title" => %{
+               field_type: "string",
+               storage_type: "string",
+               persistence_options: %{
+                 nullable: false,
+                 indexed: true,
+                 unique: false
+               },
+               validation_options: %{
+                 required: true,
+                 length: %{max: 200}
+               },
+               filters: [],
+               meta: %{}
+             }
+           } == fields
   end
 
   test "add timestamps" do
@@ -163,5 +179,59 @@ defmodule EctoEntityTest do
              "inserted_at" => "naive_datetime",
              "updated_at" => "naive_datetime"
            } == fields
+  end
+
+  test "alter field, separate migration sets" do
+    type = Type.new(@source, @label, @singular, @plural)
+
+    type =
+      type
+      |> Type.add_field("title", "string", "string",
+        nullable: false,
+        indexed: true,
+        unique: true,
+        required: true,
+        length: %{max: 200}
+      )
+      |> Type.alter_field!("title",
+        make_nullable: true,
+        drop_index: true,
+        remove_uniqueness: true,
+        set_default: "foo",
+        required: false
+      )
+
+    %{migrations: [_, %{set: [migration]}], fields: %{"title" => field_options}} = type
+
+    assert %{
+             type: "alter_field",
+             identifier: "title",
+             persistence_options: %{
+               make_nullable: true,
+               drop_index: true,
+               remove_uniqueness: true,
+               set_default: "foo"
+             },
+             validation_options: %{
+               required: false
+             }
+           } = migration
+
+    assert %{
+             field_type: "string",
+             storage_type: "string",
+             persistence_options: %{
+               nullable: true,
+               indexed: false,
+               unique: false,
+               default: "foo"
+             },
+             validation_options: %{
+               required: false,
+               length: %{max: 200}
+             },
+             filters: [],
+             meta: %{}
+           } = field_options
   end
 end

@@ -11,13 +11,50 @@ defmodule EctoEntity.Type do
   @type migration_set_id :: binary()
   @type iso8601 :: binary()
 
+  @type field_options ::
+          %{
+            field_type: field_type(),
+            storage_type: binary(),
+            # Options enforced at the persistence layer, typically DB options
+            persistence_options: %{
+              required(:nullable) => bool(),
+              required(:indexed) => bool(),
+              optional(:unique) => bool(),
+              optional(:default) => any()
+            },
+            # Options enforced at the validation step, equivalently to Ecto.Changeset
+            validation_options: %{
+              required(:required) => bool(),
+              optional(:format) => binary(),
+              optional(:number) => %{optional(binary()) => number()},
+              optional(:excluding) => any(),
+              optional(:including) => any(),
+              optional(:length) => %{optional(binary()) => number()}
+            },
+            # Filters, such as slugify and other potential transformation for the incoming data
+            filters: [
+              %{
+                type: binary(),
+                args: any()
+              },
+              ...
+            ],
+            # For presentation layer metadata and such
+            meta: %{
+              optional(binary()) => any()
+            }
+          }
+
   @type migration_set_item ::
           %{
             # add_primary_key
             type: binary(),
-            identifier: binary(),
-            key_type: binary()
+            primary_type: binary()
           }
+          | %{
+              # add_timestamps
+              type: binary()
+            }
           | %{
               # add_field
               type: binary(),
@@ -109,7 +146,7 @@ defmodule EctoEntity.Type do
           singular: binary(),
           plural: binary(),
           fields: %{
-            optional(field_name()) => field_type()
+            optional(field_name()) => field_options()
           },
           changesets: %{
             optional(changeset_name()) => [changeset()]
@@ -124,6 +161,7 @@ defmodule EctoEntity.Type do
           plural :: binary
         ) :: t
   def new(source, label, singular, plural) do
+    # TODO: add guards
     %{
       label: label,
       source: source,
@@ -255,7 +293,65 @@ defmodule EctoEntity.Type do
     [migration_set_item | migration_set]
   end
 
-  # TODO: Implement alter field
+  @persistence_options [
+    :make_nullable,
+    :add_index,
+    :drop_index,
+    :remove_uniqueness,
+    :set_default
+  ]
+
+  @validation_options [
+    :required,
+    :format,
+    :number,
+    :excluding,
+    :including,
+    :length
+  ]
+  def alter_field!(type, identifier, options) when is_map(type) do
+    migration_set(type, fn set ->
+      alter_field!(set, type, identifier, options)
+    end)
+  end
+
+  def alter_field!(migration_set, type, identifier, options) when is_list(migration_set) do
+    if not migration_field_exists?(type, migration_set, identifier) do
+      raise "Cannot alter a field that is not defined previously in type fields or the current migration set."
+    end
+
+    persistence_options =
+      options
+      |> Enum.filter(fn {key, _} ->
+        key in @persistence_options
+      end)
+      |> Enum.into(%{})
+
+    validation_options =
+      options
+      |> Enum.filter(fn {key, _} ->
+        key in @validation_options
+      end)
+      |> Enum.into(%{})
+
+    migration_set_item = %{
+      type: "alter_field",
+      identifier: identifier,
+      persistence_options: persistence_options,
+      validation_options: validation_options,
+      filters: Keyword.get(options, :filters, []),
+      meta: Keyword.get(options, :meta, %{})
+    }
+
+    [migration_set_item | migration_set]
+  end
+
+  defp migration_field_exists?(type, set, identifier) do
+    Map.has_key?(type.fields, identifier) or
+      Enum.any?(set, fn msi ->
+        match?(%{type: "add_field", identifier: ^identifier}, msi)
+      end)
+  end
 
   defp migrations_to_fields(type) do
     fields =
@@ -268,7 +364,7 @@ defmodule EctoEntity.Type do
   end
 
   defp migration_set_item_to_field(%{type: "add_field"} = item, fields) do
-    Map.put(fields, item.identifier, item.field_type)
+    Map.put(fields, item.identifier, Map.drop(item, [:type, :identifier]))
   end
 
   defp migration_set_item_to_field(%{type: "add_timestamps"}, fields) do
@@ -285,6 +381,21 @@ defmodule EctoEntity.Type do
       end
 
     Map.put(fields, "id", ecto_type)
+  end
+
+  defp migration_set_item_to_field(%{type: "alter_field"} = msi, fields) do
+    fields =
+      Enum.reduce(msi.persistence_options, fields, fn {key, value}, fields ->
+        case key do
+          :make_nullable -> Map.put(fields, :nullable, true)
+          :add_index -> Map.put(fields, :indexed, true)
+          :drop_index -> Map.put(fields, :indexed, false)
+          :remove_uniqueness -> Map.put(fields, :unique, false)
+          :set_default -> Map.put(fields, :unique, value)
+        end
+      end)
+
+    Map.merge(fields, msi.validation_options)
   end
 
   # TODO: implement
