@@ -96,6 +96,8 @@ defmodule EctoEntity.Type do
   @type migration :: %{
           id: migration_set_id(),
           created_at: iso8601(),
+          # Essentially a vector clock allowing migration code to detect conflicts
+          last_migration_count: integer(),
           set: [migration_set_item(), ...]
         }
 
@@ -133,9 +135,16 @@ defmodule EctoEntity.Type do
     }
   end
 
-  @spec migration_set(type :: t, callback :: fun()) :: t
+  @spec migration_defaults!(type :: t, callback :: fun()) :: t
   def migration_defaults!(%{migrations: migrations} = type, callback) do
     if migrations == [] do
+      type
+      |> migration_set(fn set ->
+        set
+        |> add_primary_key()
+        |> add_timestamps()
+        |> callback.()
+      end)
     else
       raise "Cannot set migration defaults on a type with pre-existing migrations."
     end
@@ -146,12 +155,36 @@ defmodule EctoEntity.Type do
     migration = %{
       id: new_uuid(),
       created_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+      last_migration_count: Enum.count(migrations),
       set: callback.([]) |> Enum.reverse()
     }
 
     %{type | migrations: migrations ++ [migration]}
     |> migrations_to_fields()
     |> migrations_to_changesets()
+  end
+
+  def add_primary_key(type, use_integer \\ false)
+
+  def add_primary_key(type, use_integer) when is_map(type) do
+    migration_set(type, fn set ->
+      add_primary_key(set, use_integer)
+    end)
+  end
+
+  def add_primary_key(migration_set, use_integer) when is_list(migration_set) do
+    primary_type =
+      case use_integer do
+        true -> "integer"
+        false -> "uuid"
+      end
+
+    migration_set_item = %{
+      type: "add_primary_key",
+      primary_type: primary_type
+    }
+
+    [migration_set_item | migration_set]
   end
 
   @persistence_options [
@@ -222,6 +255,8 @@ defmodule EctoEntity.Type do
     [migration_set_item | migration_set]
   end
 
+  # TODO: Implement alter field
+
   defp migrations_to_fields(type) do
     fields =
       Enum.reduce(type.migrations, %{}, fn migration, fields ->
@@ -242,15 +277,22 @@ defmodule EctoEntity.Type do
     |> Map.put("updated_at", "naive_datetime")
   end
 
+  defp migration_set_item_to_field(%{type: "add_primary_key"} = item, fields) do
+    ecto_type =
+      case item.primary_type do
+        "integer" -> "id"
+        "uuid" -> "binary_id"
+      end
+
+    Map.put(fields, "id", ecto_type)
+  end
+
   # TODO: implement
   defp migrations_to_changesets(type) do
     type
   end
 
-  # TODO: it lies!
   defp new_uuid do
-    [:positive, :monotonic]
-    |> System.unique_integer()
-    |> Integer.to_string()
+    UUID.uuid1()
   end
 end
