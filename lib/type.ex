@@ -3,12 +3,25 @@ defmodule EctoEntity.Type do
 
   ## Examples
 
+  Create a type, add defaults and a single field title field.
+
       iex> alias EctoEntity.Type
       ...> t = "posts"
       ...> |> Type.new("Post", "post", "posts")
-      ...> |> Type.add_field("title", "string", "string", nullable: false)
-      ...> match?(%{source: "posts", label: "Post", singular: "post", plural: "posts", fields: %{"title" => _}}, t)
+      ...> |> Type.migration_defaults!(fn set ->
+      ...>   set
+      ...>   |> Type.add_field("title", "string", "string", nullable: false)
+      ...> end)
+      ...> %{source: "posts", label: "Post", singular: "post", plural: "posts",
+      ...>   fields: %{
+      ...>     "id" => _,
+      ...>     "title" => _,
+      ...>     "inserted_at" => _,
+      ...>     "updated_at" => _
+      ...> }}
+      ...> |> match?(t)
       true
+
   """
   @type field_name :: binary()
   @type field_type :: binary() | atom()
