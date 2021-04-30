@@ -1,4 +1,15 @@
 defmodule EctoEntity.Type do
+  @moduledoc """
+
+  ## Examples
+
+      iex> alias EctoEntity.Type
+      ...> t = "posts"
+      ...> |> Type.new("Post", "post", "posts")
+      ...> |> Type.add_field("title", "string", "string", nullable: false)
+      ...> match?(%{source: "posts", label: "Post", singular: "post", plural: "posts", fields: %{"title" => _}}, t)
+      true
+  """
   @type field_name :: binary()
   @type field_type :: binary() | atom()
 
@@ -160,7 +171,8 @@ defmodule EctoEntity.Type do
           singular :: binary,
           plural :: binary
         ) :: t
-  def new(source, label, singular, plural) do
+  def new(source, label, singular, plural)
+      when is_binary(source) and is_binary(label) and is_binary(singular) and is_binary(plural) do
     # TODO: add guards
     %{
       label: label,
@@ -384,18 +396,36 @@ defmodule EctoEntity.Type do
   end
 
   defp migration_set_item_to_field(%{type: "alter_field"} = msi, fields) do
-    fields =
-      Enum.reduce(msi.persistence_options, fields, fn {key, value}, fields ->
+    field = Map.get(fields, msi.identifier)
+
+    persistence_options =
+      Enum.reduce(msi.persistence_options, field.persistence_options, fn {key, value}, opts ->
         case key do
-          :make_nullable -> Map.put(fields, :nullable, true)
-          :add_index -> Map.put(fields, :indexed, true)
-          :drop_index -> Map.put(fields, :indexed, false)
-          :remove_uniqueness -> Map.put(fields, :unique, false)
-          :set_default -> Map.put(fields, :unique, value)
+          :make_nullable -> msi_bool(opts, value, :nullable, true)
+          :add_index -> msi_bool(opts, value, :indexed, true)
+          :drop_index -> msi_bool(opts, value, :indexed, false)
+          :remove_uniqueness -> msi_bool(opts, value, :unique, false)
+          :set_default -> Map.put(opts, :default, value)
         end
       end)
 
-    Map.merge(fields, msi.validation_options)
+    validation_options = Map.merge(field.validation_options, msi.validation_options)
+
+    field = %{
+      field
+      | persistence_options: persistence_options,
+        validation_options: validation_options
+    }
+
+    Map.put(fields, msi.identifier, field)
+  end
+
+  defp msi_bool(fields, apply?, key, value) do
+    if apply? do
+      Map.put(fields, key, value)
+    else
+      fields
+    end
   end
 
   # TODO: implement
