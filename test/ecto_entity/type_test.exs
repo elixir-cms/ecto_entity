@@ -1,4 +1,4 @@
-defmodule EctoEntityTest do
+defmodule EctoEntity.TypeTest do
   use ExUnit.Case, async: true
   doctest EctoEntity.Type
 
@@ -12,7 +12,7 @@ defmodule EctoEntityTest do
   test "create type" do
     type = Type.new(@source, @label, @singular, @plural)
 
-    assert %{
+    assert %Type{
              source: @source,
              label: @label,
              singular: @singular,
@@ -23,6 +23,23 @@ defmodule EctoEntityTest do
            } = type
   end
 
+  test "type from compatible map" do
+    type = Type.new(@source, @label, @singular, @plural)
+
+    map = Map.delete(type, :__struct__)
+
+    assert %Type{
+             source: @source,
+             label: @label,
+             singular: @singular,
+             plural: @plural,
+             fields: %{},
+             changesets: %{},
+             migrations: [],
+             ephemeral: %{}
+           } = Type.from_map!(map)
+  end
+
   test "add field" do
     type = Type.new(@source, @label, @singular, @plural)
 
@@ -31,7 +48,7 @@ defmodule EctoEntityTest do
       changesets: _changesets,
       migrations: [migration]
     } =
-      Type.add_field(type, "title", "string", "string",
+      Type.add_field!(type, "title", "string", "string",
         nullable: false,
         indexed: true,
         unique: false,
@@ -78,6 +95,20 @@ defmodule EctoEntityTest do
                meta: %{}
              }
            } == fields
+  end
+
+  test "add field - invalid option" do
+    type = Type.new(@source, @label, @singular, @plural)
+
+    assert_raise(Type.Error, fn ->
+      Type.add_field!(type, "title", "string", "string",
+        fullable: false,
+        indexed: true,
+        unique: false,
+        required: true,
+        length: %{max: 200}
+      )
+    end)
   end
 
   test "add timestamps" do
@@ -186,7 +217,7 @@ defmodule EctoEntityTest do
 
     type =
       type
-      |> Type.add_field("title", "string", "string",
+      |> Type.add_field!("title", "string", "string",
         nullable: false,
         indexed: true,
         unique: true,
@@ -242,7 +273,7 @@ defmodule EctoEntityTest do
       type
       |> Type.migration_set(fn set ->
         set
-        |> Type.add_field("title", "string", "string",
+        |> Type.add_field!("title", "string", "string",
           nullable: false,
           indexed: true,
           unique: true,

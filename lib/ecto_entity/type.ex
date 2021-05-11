@@ -10,7 +10,7 @@ defmodule EctoEntity.Type do
       ...> |> Type.new("Post", "post", "posts")
       ...> |> Type.migration_defaults!(fn set ->
       ...>   set
-      ...>   |> Type.add_field("title", "string", "string", nullable: false)
+      ...>   |> Type.add_field!("title", "string", "string", nullable: false)
       ...> end)
       ...> %{source: "posts", label: "Post", singular: "post", plural: "posts",
       ...>   fields: %{
@@ -23,17 +23,80 @@ defmodule EctoEntity.Type do
       true
 
   """
+
+  require Logger
+  import Norm
+
+  defmodule Error do
+    defexception [:message]
+  end
+
+  defstruct label: nil,
+            source: nil,
+            singular: nil,
+            plural: nil,
+            fields: %{},
+            changesets: %{},
+            migrations: %{},
+            ephemeral: %{}
+
+  alias EctoEntity.Type
+
   @type field_name :: binary()
+  @field_name_spec spec(is_binary())
   @type field_type :: binary() | atom()
+  @field_type_spec spec(is_binary())
 
   # Could restrict to :create|:update|:import
   @type changeset_name :: atom()
+  @changeset_name_spec one_of([:create, :update, :import])
 
   # Typically "cast", "validate_required" and friends
   @type changeset_op :: binary()
+  @changeset_op_spec spec(
+                       &(&1 in [
+                           "cast",
+                           "validate_required",
+                           "validate_format",
+                           "validate_number",
+                           "validate_excluding",
+                           "validate_including",
+                           "validate_length"
+                         ])
+                     )
 
   @type migration_set_id :: binary()
+  @migration_set_id_spec spec(is_binary())
   @type iso8601 :: binary()
+  @iso8601_spec spec(is_binary())
+  @default_spec spec(
+                  is_binary() or is_integer() or is_float() or is_map() or
+                    is_list() or
+                    is_boolean()
+                )
+
+  @persistence_options_spec schema(%{
+                              nullable: spec(is_boolean()),
+                              indexed: spec(is_boolean()),
+                              unique: spec(is_boolean()),
+                              default: @default_spec
+                            })
+  @validation_options_spec schema(%{
+                             required: spec(is_boolean()),
+                             format: spec(is_boolean()),
+                             number: spec(is_boolean()),
+                             excluding: spec(is_boolean()),
+                             including: spec(is_boolean()),
+                             length: spec(is_map())
+                           })
+  @filter_spec coll_of(
+                 schema(%{
+                   type: spec(is_binary()),
+                   args: spec(is_map() or is_list())
+                 }),
+                 kind: spec(is_list())
+               )
+  @meta_spec spec(is_map())
 
   @type field_options ::
           %{
@@ -68,6 +131,14 @@ defmodule EctoEntity.Type do
               optional(binary()) => any()
             }
           }
+  @field_options_spec schema(%{
+                        field_type: @field_type_spec,
+                        storage_type: spec(is_binary()),
+                        persistence_options: @persistence_options_spec,
+                        validation_options: @validation_options_spec,
+                        filters: @filter_spec,
+                        meta: @meta_spec
+                      })
 
   @type migration_set_item ::
           %{
@@ -148,11 +219,47 @@ defmodule EctoEntity.Type do
                 optional(binary()) => any()
               }
             }
+  @migration_set_item_spec one_of([
+                             schema(%{
+                               type: spec(&(&1 == "add_primary_key")),
+                               primary_type: spec(is_binary())
+                             }),
+                             schema(%{type: spec(&(&1 == "add_timestamps"))}),
+                             schema(%{
+                               type: spec(&(&1 == "add_field")),
+                               identifier: spec(is_binary()),
+                               field_type: @field_type_spec,
+                               storage_type: spec(is_binary()),
+                               persistence_options: @persistence_options_spec,
+                               validation_options: @validation_options_spec,
+                               filters: @filter_spec,
+                               meta: @meta_spec
+                             }),
+                             schema(%{
+                               type: spec(&(&1 == "alter_field")),
+                               identifier: spec(is_binary()),
+                               persistence_changes:
+                                 schema(%{
+                                   make_nullable: true,
+                                   add_index: true,
+                                   drop_index: true,
+                                   remove_uniqueness: true,
+                                   set_default: @default_spec
+                                 }),
+                               validation_options: @validation_options_spec,
+                               filters: @filter_spec,
+                               meta: @meta_spec
+                             })
+                           ])
 
   @type changeset :: %{
           operation: binary(),
           args: any()
         }
+  @changeset_spec schema(%{
+                    operation: @changeset_op_spec,
+                    args: spec(is_map() or is_list())
+                  })
 
   @type migration :: %{
           id: migration_set_id(),
@@ -161,8 +268,14 @@ defmodule EctoEntity.Type do
           last_migration_count: integer(),
           set: [migration_set_item(), ...]
         }
+  @migration_spec schema(%{
+                    id: @migration_set_id_spec,
+                    created_at: @iso8601_spec,
+                    last_migration_count: spec(is_integer()),
+                    set: coll_of(@migration_spec, kind: spec(is_list()))
+                  })
 
-  @type t :: %{
+  @type t :: %Type{
           # pretty name
           label: binary(),
           # slug, often used for table-name
@@ -177,6 +290,46 @@ defmodule EctoEntity.Type do
           },
           migrations: [migration()]
         }
+  @type_spec schema(%{
+               label: spec(is_binary()),
+               source: spec(is_binary()),
+               singular: spec(is_binary()),
+               plural: spec(is_binary()),
+               fields:
+                 coll_of(
+                   {@field_name_spec, @field_options_spec},
+                   into: Map.new(),
+                   kind: spec(is_map())
+                 ),
+               changesets:
+                 coll_of(
+                   {@changeset_name_spec, @changeset_spec},
+                   into: Map.new(),
+                   kind: spec(is_map())
+                 ),
+               migrations:
+                 coll_of(
+                   @migration_spec,
+                   kind: spec(is_list())
+                 )
+             })
+
+  @type map_t :: %{
+          # pretty name
+          label: binary(),
+          # slug, often used for table-name
+          source: binary(),
+          singular: binary(),
+          plural: binary(),
+          fields: %{
+            optional(field_name()) => field_options()
+          },
+          changesets: %{
+            optional(changeset_name()) => [changeset()]
+          },
+          migrations: [migration()],
+          ephemeral: map()
+        }
 
   @spec new(
           source :: binary,
@@ -186,16 +339,21 @@ defmodule EctoEntity.Type do
         ) :: t
   def new(source, label, singular, plural)
       when is_binary(source) and is_binary(label) and is_binary(singular) and is_binary(plural) do
-    # TODO: add guards
-    %{
+    %Type{
       label: label,
       source: source,
       singular: singular,
       plural: plural,
       fields: %{},
       changesets: %{},
-      migrations: []
+      migrations: [],
+      ephemeral: %{}
     }
+  end
+
+  @spec from_map!(type :: map_t) :: t
+  def from_map!(type) do
+    struct!(Type, type)
   end
 
   @spec migration_defaults!(type :: t, callback :: fun()) :: t
@@ -265,14 +423,17 @@ defmodule EctoEntity.Type do
     :including,
     :length
   ]
-  def add_field(type, identifier, field_type, storage_type, options) when is_map(type) do
+  def add_field!(type, identifier, field_type, storage_type, options) when is_map(type) do
     migration_set(type, fn set ->
-      add_field(set, identifier, field_type, storage_type, options)
+      add_field!(set, identifier, field_type, storage_type, options)
     end)
   end
 
-  def add_field(migration_set, identifier, field_type, storage_type, options)
+  def add_field!(migration_set, identifier, field_type, storage_type, options)
       when is_list(migration_set) do
+    valid_keys = List.flatten([@persistence_options, @validation_options, [:meta, :filters]])
+    check_options!(options, valid_keys)
+
     persistence_options =
       options
       |> Enum.filter(fn {key, _} ->
@@ -341,6 +502,9 @@ defmodule EctoEntity.Type do
   end
 
   def alter_field!(migration_set, type, identifier, options) when is_list(migration_set) do
+    valid_keys = List.flatten([@persistence_options, @validation_options, [:meta, :filters]])
+    check_options!(options, valid_keys)
+
     if not migration_field_exists?(type, migration_set, identifier) do
       raise "Cannot alter a field that is not defined previously in type fields or the current migration set."
     end
@@ -448,5 +612,13 @@ defmodule EctoEntity.Type do
 
   defp new_uuid do
     UUID.uuid1()
+  end
+
+  defp check_options!(opts, valid_keys) do
+    Enum.each(opts, fn {key, _} ->
+      if key not in valid_keys do
+        raise Error, message: "Invalid option: #{key}"
+      end
+    end)
   end
 end
