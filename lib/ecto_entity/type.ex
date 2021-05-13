@@ -356,6 +356,40 @@ defmodule EctoEntity.Type do
     struct!(Type, type)
   end
 
+  @spec to_persistable(type :: t() | map_t()) :: map()
+  def to_persistable(type) do
+    type
+    |> Map.drop([:__struct__, :ephemeral])
+    |> stringify_map()
+  end
+
+  @spec from_persistable!(stringly_type :: map) :: t()
+  def from_persistable!(stringly_type) do
+    base_fields = Type.__struct__() |> Map.keys()
+
+    # TODO: Convert string keys that should be atom to atoms, leave others alone
+    Enum.reduce(stringly_type, %{}, fn {key, value}, t ->
+      try do
+        field = String.to_existing_atom(key)
+
+        if field in base_fields do
+          case field do
+            :fields ->
+              val = fields_from_map!(value)
+              Map.put(t, field, val)
+
+            _ ->
+              Map.put(t, field, value)
+          end
+        else
+          raise Error, "Field does not exist in Type data structure: #{field}"
+        end
+      catch
+        _ -> raise Error, "Field does not map to a known atom, cannot be a field in Type"
+      end
+    end)
+  end
+
   @spec migration_defaults!(type :: t, callback :: fun()) :: t
   def migration_defaults!(%{migrations: migrations} = type, callback) do
     if migrations == [] do
@@ -621,4 +655,49 @@ defmodule EctoEntity.Type do
       end
     end)
   end
+
+  @field_options_types %{
+    field_type: :string,
+    storage_type: :string,
+  }
+  defp fields_from_map!(opts) do
+    Map.take(opts, )
+  end
+
+  defp stringify_map(source) when is_struct(source) do
+    source
+    |> Map.delete(:__struct__)
+    |> stringify_map()
+  end
+
+  defp stringify_map(source) when is_map(source) do
+    source
+    |> Enum.map(&stringify_kv/1)
+    |> Map.new()
+  end
+
+  defp stringify_map(source) when is_list(source) do
+    if Keyword.keyword?(source) do
+      source
+      |> Enum.map(&stringify_kv/1)
+      |> Map.new()
+    else
+      source
+      |> Enum.map(&stringify_value/1)
+    end
+  end
+
+  defp stringify_kv({key, value}) do
+    {stringify_key(key), stringify_value(value)}
+  end
+
+  defp stringify_key(key) when is_atom(key), do: Atom.to_string(key)
+
+  defp stringify_key(key) when is_binary(key), do: key
+
+  defp stringify_value(value) when is_map(value) or is_list(value) do
+    stringify_map(value)
+  end
+
+  defp stringify_value(value), do: value
 end
