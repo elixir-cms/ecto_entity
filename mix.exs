@@ -23,7 +23,6 @@ defmodule EctoEntity.MixProject do
     [
       {:elixir_uuid, "~> 1.2"},
       {:ecto, "~> 3.6"},
-      {:norm, "~> 0.12"},
       {:jason, "~> 1.2", only: :test}
     ]
   end

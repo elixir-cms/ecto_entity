@@ -25,7 +25,6 @@ defmodule EctoEntity.Type do
   """
 
   require Logger
-  import Norm
 
   defmodule Error do
     defexception [:message]
@@ -42,61 +41,74 @@ defmodule EctoEntity.Type do
 
   alias EctoEntity.Type
 
+  @atom_keys [
+    # Base type
+    "label",
+    "source",
+    "singular",
+    "plural",
+    "fields",
+    "changesets",
+    "migrations",
+    "ephemeral",
+    # field options
+    "field_type",
+    "storage_type",
+    "persistence_options",
+    "validation_options",
+    "filters",
+    "meta",
+    # persistence options
+    "primary_key",
+    "nullable",
+    "indexed",
+    "unique",
+    "default",
+    # persistence changes
+    "make_nullable",
+    "add_index",
+    "drop_index",
+    "remove_uniqueness",
+    "set_default",
+    # validation options
+    "required",
+    "format",
+    "number",
+    "excluding",
+    "including",
+    "length",
+    # filters
+    "type",
+    "args",
+    # migration
+    "id",
+    "created_at",
+    "last_migration_count",
+    "set",
+    # migration set items
+    "identifier",
+    "primary_type"
+  ]
+
+  @atomize_maps [
+    :changesets,
+    :migrations,
+    :persistence_options,
+    :persistence_changes,
+    :validation_options,
+    :set
+  ]
   @type field_name :: binary()
-  @field_name_spec spec(is_binary())
   @type field_type :: binary() | atom()
-  @field_type_spec spec(is_binary())
 
   # Could restrict to :create|:update|:import
   @type changeset_name :: atom()
-  @changeset_name_spec one_of([:create, :update, :import])
 
   # Typically "cast", "validate_required" and friends
   @type changeset_op :: binary()
-  @changeset_op_spec spec(
-                       &(&1 in [
-                           "cast",
-                           "validate_required",
-                           "validate_format",
-                           "validate_number",
-                           "validate_excluding",
-                           "validate_including",
-                           "validate_length"
-                         ])
-                     )
 
   @type migration_set_id :: binary()
-  @migration_set_id_spec spec(is_binary())
   @type iso8601 :: binary()
-  @iso8601_spec spec(is_binary())
-  @default_spec spec(
-                  is_binary() or is_integer() or is_float() or is_map() or
-                    is_list() or
-                    is_boolean()
-                )
-
-  @persistence_options_spec schema(%{
-                              nullable: spec(is_boolean()),
-                              indexed: spec(is_boolean()),
-                              unique: spec(is_boolean()),
-                              default: @default_spec
-                            })
-  @validation_options_spec schema(%{
-                             required: spec(is_boolean()),
-                             format: spec(is_boolean()),
-                             number: spec(is_boolean()),
-                             excluding: spec(is_boolean()),
-                             including: spec(is_boolean()),
-                             length: spec(is_map())
-                           })
-  @filter_spec coll_of(
-                 schema(%{
-                   type: spec(is_binary()),
-                   args: spec(is_map() or is_list())
-                 }),
-                 kind: spec(is_list())
-               )
-  @meta_spec spec(is_map())
 
   @type field_options ::
           %{
@@ -104,6 +116,7 @@ defmodule EctoEntity.Type do
             storage_type: binary(),
             # Options enforced at the persistence layer, typically DB options
             persistence_options: %{
+              optional(:primary_key) => bool(),
               required(:nullable) => bool(),
               required(:indexed) => bool(),
               optional(:unique) => bool(),
@@ -131,14 +144,6 @@ defmodule EctoEntity.Type do
               optional(binary()) => any()
             }
           }
-  @field_options_spec schema(%{
-                        field_type: @field_type_spec,
-                        storage_type: spec(is_binary()),
-                        persistence_options: @persistence_options_spec,
-                        validation_options: @validation_options_spec,
-                        filters: @filter_spec,
-                        meta: @meta_spec
-                      })
 
   @type migration_set_item ::
           %{
@@ -219,47 +224,11 @@ defmodule EctoEntity.Type do
                 optional(binary()) => any()
               }
             }
-  @migration_set_item_spec one_of([
-                             schema(%{
-                               type: spec(&(&1 == "add_primary_key")),
-                               primary_type: spec(is_binary())
-                             }),
-                             schema(%{type: spec(&(&1 == "add_timestamps"))}),
-                             schema(%{
-                               type: spec(&(&1 == "add_field")),
-                               identifier: spec(is_binary()),
-                               field_type: @field_type_spec,
-                               storage_type: spec(is_binary()),
-                               persistence_options: @persistence_options_spec,
-                               validation_options: @validation_options_spec,
-                               filters: @filter_spec,
-                               meta: @meta_spec
-                             }),
-                             schema(%{
-                               type: spec(&(&1 == "alter_field")),
-                               identifier: spec(is_binary()),
-                               persistence_changes:
-                                 schema(%{
-                                   make_nullable: true,
-                                   add_index: true,
-                                   drop_index: true,
-                                   remove_uniqueness: true,
-                                   set_default: @default_spec
-                                 }),
-                               validation_options: @validation_options_spec,
-                               filters: @filter_spec,
-                               meta: @meta_spec
-                             })
-                           ])
 
   @type changeset :: %{
           operation: binary(),
           args: any()
         }
-  @changeset_spec schema(%{
-                    operation: @changeset_op_spec,
-                    args: spec(is_map() or is_list())
-                  })
 
   @type migration :: %{
           id: migration_set_id(),
@@ -268,12 +237,6 @@ defmodule EctoEntity.Type do
           last_migration_count: integer(),
           set: [migration_set_item(), ...]
         }
-  @migration_spec schema(%{
-                    id: @migration_set_id_spec,
-                    created_at: @iso8601_spec,
-                    last_migration_count: spec(is_integer()),
-                    set: coll_of(@migration_spec, kind: spec(is_list()))
-                  })
 
   @type t :: %Type{
           # pretty name
@@ -290,29 +253,6 @@ defmodule EctoEntity.Type do
           },
           migrations: [migration()]
         }
-  @type_spec schema(%{
-               label: spec(is_binary()),
-               source: spec(is_binary()),
-               singular: spec(is_binary()),
-               plural: spec(is_binary()),
-               fields:
-                 coll_of(
-                   {@field_name_spec, @field_options_spec},
-                   into: Map.new(),
-                   kind: spec(is_map())
-                 ),
-               changesets:
-                 coll_of(
-                   {@changeset_name_spec, @changeset_spec},
-                   into: Map.new(),
-                   kind: spec(is_map())
-                 ),
-               migrations:
-                 coll_of(
-                   @migration_spec,
-                   kind: spec(is_list())
-                 )
-             })
 
   @type map_t :: %{
           # pretty name
@@ -363,31 +303,14 @@ defmodule EctoEntity.Type do
     |> stringify_map()
   end
 
-  @spec from_persistable!(stringly_type :: map) :: t()
-  def from_persistable!(stringly_type) do
-    base_fields = Type.__struct__() |> Map.keys()
-
-    # TODO: Convert string keys that should be atom to atoms, leave others alone
-    Enum.reduce(stringly_type, %{}, fn {key, value}, t ->
-      try do
-        field = String.to_existing_atom(key)
-
-        if field in base_fields do
-          case field do
-            :fields ->
-              val = fields_from_map!(value)
-              Map.put(t, field, val)
-
-            _ ->
-              Map.put(t, field, value)
-          end
-        else
-          raise Error, "Field does not exist in Type data structure: #{field}"
-        end
-      catch
-        _ -> raise Error, "Field does not map to a known atom, cannot be a field in Type"
-      end
-    end)
+  @spec from_persistable(stringly_type :: map) :: {:ok, t()} | {:error, term()}
+  def from_persistable(stringly_type) do
+    try do
+      typable = atomize!(stringly_type)
+      {:ok, from_map!(typable)}
+    catch
+      _ -> {:error, :bad_type}
+    end
   end
 
   @spec migration_defaults!(type :: t, callback :: fun()) :: t
@@ -591,19 +514,47 @@ defmodule EctoEntity.Type do
   end
 
   defp migration_set_item_to_field(%{type: "add_timestamps"}, fields) do
+    field = %{
+      field_type: "naive_datetime",
+      storage_type: "naive_datetime",
+      persistence_options: %{
+        nullable: false,
+        indexed: true,
+        unique: false
+      },
+      validation_options: %{},
+      filters: [],
+      meta: %{
+        "ecto-entity" => %{"source" => "add_timestamps"}
+      }
+    }
+
     fields
-    |> Map.put("inserted_at", "naive_datetime")
-    |> Map.put("updated_at", "naive_datetime")
+    |> Map.put("inserted_at", field)
+    |> Map.put("updated_at", field)
   end
 
   defp migration_set_item_to_field(%{type: "add_primary_key"} = item, fields) do
     ecto_type =
       case item.primary_type do
         "integer" -> "id"
-        "uuid" -> "binary_id"
+        "uuid" -> "uuid"
       end
 
-    Map.put(fields, "id", ecto_type)
+    field = %{
+      field_type: ecto_type,
+      storage_type: ecto_type,
+      persistence_options: %{
+        # Implies unique, indexed
+        primary_key: true,
+        nullable: false
+      },
+      validation_options: %{},
+      filters: [],
+      meta: %{}
+    }
+
+    Map.put(fields, "id", field)
   end
 
   defp migration_set_item_to_field(%{type: "alter_field"} = msi, fields) do
@@ -656,12 +607,70 @@ defmodule EctoEntity.Type do
     end)
   end
 
-  @field_options_types %{
-    field_type: :string,
-    storage_type: :string,
-  }
-  defp fields_from_map!(opts) do
-    Map.take(opts, )
+  defp atomize!(stringly_type) do
+    do_atomize!(stringly_type)
+  end
+
+  defp do_atomize!(s) when is_map(s) do
+    s
+    |> Enum.map(fn {key, value} ->
+      if key in @atom_keys do
+        key = String.to_existing_atom(key)
+
+        value =
+          if is_map(value) or is_list(value) do
+            if key in @atomize_maps do
+              do_atomize!(value)
+            else
+              do_keep_strings!(value)
+            end
+          else
+            # Simple value, no change
+            value
+          end
+
+        {key, value}
+      else
+        {key, value}
+      end
+    end)
+    |> Map.new()
+  end
+
+  defp do_atomize!([]) do
+    []
+  end
+
+  defp do_atomize!([_ | _] = s) when is_list(s) do
+    Enum.map(s, fn item ->
+      do_atomize!(item)
+    end)
+  end
+
+  defp do_keep_strings!([]) do
+    []
+  end
+
+  defp do_keep_strings!([_ | _] = s) when is_list(s) do
+    Enum.map(s, fn item ->
+      do_keep_strings!(item)
+    end)
+  end
+
+  defp do_keep_strings!(%{} = s) do
+    s
+    |> Enum.map(fn {key, value} ->
+      value =
+        if is_map(value) or is_list(value) do
+          do_atomize!(value)
+        else
+          # Simple value, no change
+          value
+        end
+
+      {key, value}
+    end)
+    |> Map.new()
   end
 
   defp stringify_map(source) when is_struct(source) do
@@ -677,13 +686,19 @@ defmodule EctoEntity.Type do
   end
 
   defp stringify_map(source) when is_list(source) do
-    if Keyword.keyword?(source) do
-      source
-      |> Enum.map(&stringify_kv/1)
-      |> Map.new()
-    else
-      source
-      |> Enum.map(&stringify_value/1)
+    cond do
+      source == [] ->
+        source
+        |> Enum.map(&stringify_value/1)
+
+      Keyword.keyword?(source) ->
+        source
+        |> Enum.map(&stringify_kv/1)
+        |> Map.new()
+
+      true ->
+        source
+        |> Enum.map(&stringify_value/1)
     end
   end
 

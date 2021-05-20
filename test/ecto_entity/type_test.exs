@@ -9,6 +9,77 @@ defmodule EctoEntity.TypeTest do
   @singular "post"
   @plural "posts"
 
+  @full_type %{
+    label: @label,
+    source: @source,
+    singular: @singular,
+    plural: @plural,
+    fields: %{
+      "id" => %{},
+      "updated_at" => %{},
+      "inserted_at" => %{},
+      "title" => %{
+        field_type: "string",
+        storage_type: "text",
+        persistence_options: %{
+          nullable: false,
+          indexed: true,
+          unique: false,
+          default: "foo"
+        },
+        validation_options: %{
+          required: true,
+          length: %{"min" => 4}
+        },
+        filters: [],
+        meta: %{
+          "ui" => %{
+            "anykey" => "anyvalue"
+          }
+        }
+      }
+    },
+    changesets: %{},
+    migrations: [
+      %{
+        id: UUID.uuid4(),
+        created_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+        last_migration_count: 0,
+        set: [
+          %{
+            type: "add_primary_key",
+            primary_type: "uuid"
+          },
+          %{
+            type: "add_timestamps"
+          },
+          %{
+            type: "add_field",
+            identifier: "title",
+            field_type: "string",
+            storage_type: "text",
+            persistence_options: %{
+              nullable: false,
+              indexed: true,
+              unique: false,
+              default: "foo"
+            },
+            validation_options: %{
+              required: true,
+              length: %{"min" => 4}
+            },
+            filters: [],
+            meta: %{
+              "ui" => %{
+                "anykey" => "anyvalue"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+
   test "create type" do
     type = Type.new(@source, @label, @singular, @plural)
 
@@ -130,7 +201,24 @@ defmodule EctoEntity.TypeTest do
              ]
            } = migration
 
-    assert %{"inserted_at" => "naive_datetime", "updated_at" => "naive_datetime"} == fields
+    assert %{
+             "inserted_at" => %{
+               field_type: "naive_datetime",
+               filters: [],
+               meta: %{"ecto-entity" => %{"source" => "add_timestamps"}},
+               persistence_options: %{indexed: true, nullable: false, unique: false},
+               storage_type: "naive_datetime",
+               validation_options: %{}
+             },
+             "updated_at" => %{
+               field_type: "naive_datetime",
+               filters: [],
+               meta: %{"ecto-entity" => %{"source" => "add_timestamps"}},
+               persistence_options: %{indexed: true, nullable: false, unique: false},
+               storage_type: "naive_datetime",
+               validation_options: %{}
+             }
+           } == fields
   end
 
   test "add primary key, default uuid" do
@@ -153,7 +241,16 @@ defmodule EctoEntity.TypeTest do
              ]
            } = migration
 
-    assert %{"id" => "binary_id"} == fields
+    assert %{
+             "id" => %{
+               field_type: "uuid",
+               storage_type: "uuid",
+               persistence_options: %{nullable: false, primary_key: true},
+               validation_options: %{},
+               filters: [],
+               meta: %{}
+             }
+           } == fields
   end
 
   test "add primary key, force integer" do
@@ -176,7 +273,16 @@ defmodule EctoEntity.TypeTest do
              ]
            } = migration
 
-    assert %{"id" => "id"} == fields
+    assert %{
+             "id" => %{
+               field_type: "id",
+               storage_type: "id",
+               persistence_options: %{nullable: false, primary_key: true},
+               validation_options: %{},
+               filters: [],
+               meta: %{}
+             }
+           } == fields
   end
 
   test "migration defaults" do
@@ -206,9 +312,30 @@ defmodule EctoEntity.TypeTest do
            } = migration
 
     assert %{
-             "id" => "binary_id",
-             "inserted_at" => "naive_datetime",
-             "updated_at" => "naive_datetime"
+             "id" => %{
+               field_type: "uuid",
+               storage_type: "uuid",
+               persistence_options: %{nullable: false, primary_key: true},
+               validation_options: %{},
+               filters: [],
+               meta: %{}
+             },
+             "inserted_at" => %{
+               field_type: "naive_datetime",
+               filters: [],
+               meta: %{"ecto-entity" => %{"source" => "add_timestamps"}},
+               persistence_options: %{indexed: true, nullable: false, unique: false},
+               storage_type: "naive_datetime",
+               validation_options: %{}
+             },
+             "updated_at" => %{
+               field_type: "naive_datetime",
+               filters: [],
+               meta: %{"ecto-entity" => %{"source" => "add_timestamps"}},
+               persistence_options: %{indexed: true, nullable: false, unique: false},
+               storage_type: "naive_datetime",
+               validation_options: %{}
+             }
            } == fields
   end
 
@@ -335,5 +462,10 @@ defmodule EctoEntity.TypeTest do
         required: false
       )
     end
+  end
+
+  test "make type persistable, stringify" do
+    persistable = Type.to_persistable(@full_type)
+    assert {:ok, Type.from_map!(@full_type)} == Type.from_persistable(persistable)
   end
 end
