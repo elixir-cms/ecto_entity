@@ -632,7 +632,6 @@ defmodule EctoEntity.Type do
               else
                 do_keep_strings!(value)
               end
-
             end
           else
             # Simple value, no change

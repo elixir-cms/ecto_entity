@@ -17,19 +17,28 @@ defmodule EctoEntity.Store.SimpleJson do
     File.mkdir_p!(path)
 
     filepath = Path.join(path, "#{source}.json")
+
     with {:ok, json} <- File.read(filepath),
          {:ok, decoded} <- Jason.decode(json),
          {:ok, type} <- Type.from_persistable(decoded) do
-          {:ok, type}
-         else
-          {:error, :enoent} -> {:error, error(:not_found, "File not found")}
-          {:error, err} when err in @assorted_file_errors -> {:error, ferror(err)}
-          {:error, %Jason.DecodeError{} = err} ->
-            Logger.error("JSON Decoding error: #{inspect(err)}", error: err)
-            {:error, error(:decoding_failed, "JSON decoding failed.")}
-          {:error, :bad_type} -> {:error, error(:normalize_definition_failed, "Failed to normalize definition.")}
-          {:error, _} -> {:error, error(:unknown, "Unknown error")}
-         end
+      {:ok, type}
+    else
+      {:error, :enoent} ->
+        {:error, error(:not_found, "File not found")}
+
+      {:error, err} when err in @assorted_file_errors ->
+        {:error, ferror(err)}
+
+      {:error, %Jason.DecodeError{} = err} ->
+        Logger.error("JSON Decoding error: #{inspect(err)}", error: err)
+        {:error, error(:decoding_failed, "JSON decoding failed.")}
+
+      {:error, :bad_type} ->
+        {:error, error(:normalize_definition_failed, "Failed to normalize definition.")}
+
+      {:error, _} ->
+        {:error, error(:unknown, "Unknown error")}
+    end
   end
 
   @impl true

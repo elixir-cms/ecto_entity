@@ -15,6 +15,7 @@ defmodule EctoEntity.StoreTest do
     @impl true
     def get_type(settings, source) do
       assert @settings == settings
+
       case Process.get(source, nil) do
         nil -> {:error, error(:not_found, "Not found")}
         type -> {:ok, type}
@@ -35,7 +36,10 @@ defmodule EctoEntity.StoreTest do
     end
   end
 
-  @config %{type_storage: %{module: StorageTest, settings: @settings}}
+  @config %{
+    type_storage: %{module: StorageTest, settings: @settings},
+    repo: %{module: TestRepo, dynamic: false}
+  }
   @label "Post"
   @source "posts"
   @singular "post"
@@ -77,18 +81,30 @@ defmodule EctoEntity.StoreTest do
     @tag :tmp_dir
     test "init", %{tmp_dir: tmp_dir} do
       config = %{
-        type_storage: %{module: EctoEntity.Store.SimpleJson, settings: %{directory_path: tmp_dir}}
+        type_storage: %{
+          module: EctoEntity.Store.SimpleJson,
+          settings: %{directory_path: tmp_dir}
+        },
+        repo: %{module: TestRepo}
       }
 
-      store = Store.init(config)
-      assert %{config: config} == store
+      assert %Store{
+               config: %{
+                 type_storage: %{
+                   module: EctoEntity.Store.SimpleJson,
+                   settings: %{directory_path: ^tmp_dir}
+                 }
+               }
+             } = Store.init(config)
     end
 
     @tag :tmp_dir
     test "get type missing", %{tmp_dir: tmp_dir} do
       config = %{
-        type_storage: %{module: EctoEntity.Store.SimpleJson, settings: %{directory_path: tmp_dir}}
+        type_storage: %{module: EctoEntity.Store.SimpleJson, settings: %{directory_path: tmp_dir}},
+        repo: %{module: TestRepo}
       }
+
       {:error, err} =
         config
         |> Store.init()
@@ -100,7 +116,8 @@ defmodule EctoEntity.StoreTest do
     @tag :tmp_dir
     test "put type, get type success", %{tmp_dir: tmp_dir} do
       config = %{
-        type_storage: %{module: EctoEntity.Store.SimpleJson, settings: %{directory_path: tmp_dir}}
+        type_storage: %{module: EctoEntity.Store.SimpleJson, settings: %{directory_path: tmp_dir}},
+        repo: %{module: TestRepo}
       }
 
       store = Store.init(config)

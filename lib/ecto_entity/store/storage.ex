@@ -3,12 +3,25 @@ defmodule EctoEntity.Store.Storage do
     defexception [:type, :message]
 
     @type t :: %__MODULE__{
-      type: :not_found | :reading_failed | :decoding_failed | :normalize_definition_failed | :unknown,
-      message: binary()
-    }
+            type:
+              :not_found
+              | :reading_failed
+              | :decoding_failed
+              | :normalize_definition_failed
+              | :unknown,
+            message: binary()
+          }
   end
 
-  @spec error(type :: :not_found | :reading_failed | :decoding_failed | :normalize_definition_failed | :unknown, message :: binary()) :: Error.t()
+  @spec error(
+          type ::
+            :not_found
+            | :reading_failed
+            | :decoding_failed
+            | :normalize_definition_failed
+            | :unknown,
+          message :: binary()
+        ) :: Error.t()
   def error(type, message) do
     %Error{type: type, message: message}
   end

@@ -1,6 +1,44 @@
 defmodule EctoEntity.Store do
-  def init(config) do
-    %{config: config}
+  defstruct config: nil
+
+  defmodule Error do
+    defexception [:message]
+  end
+
+  @type config :: %{
+          type_storage: %{
+            module: atom(),
+            settings: any()
+          },
+          repo: %{
+            module: atom(),
+            dynamic: true | false
+          }
+        }
+
+  @type t :: %__MODULE__{
+          config: config()
+        }
+
+  @spec init(config :: config) :: t()
+  def init(config) when is_map(config) do
+    config =
+      config
+      |> validate_config!()
+      |> config_defaults()
+
+    %__MODULE__{config: config}
+  end
+
+  @spec init(config :: keyword) :: t()
+  def init(config) when is_list(config) do
+    if not Keyword.keyword?(config) do
+      raise Error, message: "Expected map or keyword, got list."
+    end
+
+    config
+    |> Map.new()
+    |> init()
   end
 
   def get_type(store, source) do
@@ -46,5 +84,31 @@ defmodule EctoEntity.Store do
   defp get_storage(store) do
     %{config: %{type_storage: %{module: module, settings: settings}}} = store
     {module, settings}
+  end
+
+  defp validate_config!(config) do
+    %{
+      type_storage: %{
+        module: _,
+        settings: _
+      },
+      repo: %{
+        module: _
+      }
+    } = config
+
+    config
+  end
+
+  @config_defaults %{
+    [:repo, :dynamic] => false
+  }
+  defp config_defaults(config) do
+    Enum.reduce(@config_defaults, config, fn {path, default_value}, config ->
+      case get_in(config, path) do
+        nil -> put_in(config, path, default_value)
+        _ -> config
+      end
+    end)
   end
 end
