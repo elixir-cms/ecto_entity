@@ -98,6 +98,11 @@ defmodule EctoEntity.Type do
     :validation_options,
     :set
   ]
+
+  @stringify_deep [
+    :meta
+  ]
+
   @type field_name :: binary()
   @type field_type :: binary() | atom()
 
@@ -622,7 +627,12 @@ defmodule EctoEntity.Type do
             if key in @atomize_maps do
               do_atomize!(value)
             else
-              do_keep_strings!(value)
+              if key in @stringify_deep do
+                do_keep_strings!(value, :deep)
+              else
+                do_keep_strings!(value)
+              end
+
             end
           else
             # Simple value, no change
@@ -647,22 +657,27 @@ defmodule EctoEntity.Type do
     end)
   end
 
-  defp do_keep_strings!([]) do
+  defp do_keep_strings!(s, style \\ :shallow)
+
+  defp do_keep_strings!([], _) do
     []
   end
 
-  defp do_keep_strings!([_ | _] = s) when is_list(s) do
+  defp do_keep_strings!([_ | _] = s, style) when is_list(s) do
     Enum.map(s, fn item ->
-      do_keep_strings!(item)
+      do_keep_strings!(item, style)
     end)
   end
 
-  defp do_keep_strings!(%{} = s) do
+  defp do_keep_strings!(%{} = s, style) do
     s
     |> Enum.map(fn {key, value} ->
       value =
         if is_map(value) or is_list(value) do
-          do_atomize!(value)
+          case style do
+            :deep -> do_keep_strings!(value, :deep)
+            _ -> do_atomize!(value)
+          end
         else
           # Simple value, no change
           value

@@ -2,6 +2,8 @@ defmodule EctoEntity.StoreTest do
   use ExUnit.Case, async: true
 
   alias EctoEntity.Store
+  alias EctoEntity.Store.Storage.Error
+  import EctoEntity.Store.Storage, only: [error: 2]
   alias EctoEntity.Type
 
   @settings %{foo: 1, bar: 2}
@@ -13,7 +15,10 @@ defmodule EctoEntity.StoreTest do
     @impl true
     def get_type(settings, source) do
       assert @settings == settings
-      Process.get(source, nil)
+      case Process.get(source, nil) do
+        nil -> {:error, error(:not_found, "Not found")}
+        type -> {:ok, type}
+      end
     end
 
     @impl true
@@ -44,25 +49,65 @@ defmodule EctoEntity.StoreTest do
     end)
   end
 
-  test "init" do
-    store = Store.init(@config)
-    assert %{config: @config} = store
+  describe "test store" do
+    test "init" do
+      store = Store.init(@config)
+      assert %{config: @config} = store
+    end
+
+    test "get type, missing" do
+      {:error, err} =
+        @config
+        |> Store.init()
+        |> Store.get_type(@source)
+
+      assert %Error{type: :not_found} = err
+    end
+
+    test "put type, get type success" do
+      store = Store.init(@config)
+      type = new_type()
+      assert :ok = Store.put_type(store, type)
+
+      assert {:ok, type} == Store.get_type(store, @source)
+    end
   end
 
-  test "get type, missing" do
-    type =
-      @config
-      |> Store.init()
-      |> Store.get_type(@source)
+  describe "json store" do
+    @tag :tmp_dir
+    test "init", %{tmp_dir: tmp_dir} do
+      config = %{
+        type_storage: %{module: EctoEntity.Store.SimpleJson, settings: %{directory_path: tmp_dir}}
+      }
 
-    assert nil == type
-  end
+      store = Store.init(config)
+      assert %{config: config} == store
+    end
 
-  test "put type, get type success" do
-    store = Store.init(@config)
-    type = new_type()
-    assert :ok = Store.put_type(store, type)
+    @tag :tmp_dir
+    test "get type missing", %{tmp_dir: tmp_dir} do
+      config = %{
+        type_storage: %{module: EctoEntity.Store.SimpleJson, settings: %{directory_path: tmp_dir}}
+      }
+      {:error, err} =
+        config
+        |> Store.init()
+        |> Store.get_type(@source)
 
-    assert type == Store.get_type(store, @source)
+      assert %Error{type: :not_found} = err
+    end
+
+    @tag :tmp_dir
+    test "put type, get type success", %{tmp_dir: tmp_dir} do
+      config = %{
+        type_storage: %{module: EctoEntity.Store.SimpleJson, settings: %{directory_path: tmp_dir}}
+      }
+
+      store = Store.init(config)
+      type = new_type()
+      assert :ok = Store.put_type(store, type)
+
+      assert {:ok, type} == Store.get_type(store, @source)
+    end
   end
 end
