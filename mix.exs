@@ -23,7 +23,8 @@ defmodule EctoEntity.MixProject do
     [
       {:elixir_uuid, "~> 1.2"},
       {:ecto, "~> 3.6"},
-      {:jason, "~> 1.2", optional: true}
+      {:jason, "~> 1.2", optional: true},
+      {:ecto_sql, "~> 3.6", optional: true}
     ]
   end
 end

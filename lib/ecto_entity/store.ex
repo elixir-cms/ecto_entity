@@ -1,4 +1,6 @@
 defmodule EctoEntity.Store do
+  alias EctoEntity.Type
+
   defstruct config: nil
 
   defmodule Error do
@@ -12,13 +14,15 @@ defmodule EctoEntity.Store do
           },
           repo: %{
             module: atom(),
-            dynamic: true | false
+            dynamic: pid() | nil
           }
         }
 
   @type t :: %__MODULE__{
           config: config()
         }
+
+  alias EctoEntity.Store
 
   @spec init(config :: config) :: t()
   def init(config) when is_map(config) do
@@ -41,14 +45,48 @@ defmodule EctoEntity.Store do
     |> init()
   end
 
+  # TODO: Implement list, get create, update, delete
+  def list(%Type{ephemeral: %{store: store}} = definition) when not is_nil(store) do
+    list(store, definition)
+  end
+
+  def list(%Store{} = store, %Type{} = definition) do
+    %{config: %{repo: %{module: repo_module, dynamic: dynamic}}} = store
+
+    if not is_nil(dynamic) do
+      repo_module.put_dynamic_repo(dynamic)
+    end
+
+    case Ecto.Adapter.SQL.query(repo_module, "select * from #{definition.source}", []) do
+      {:ok, result} ->
+        result_to_items(repo_module, result)
+
+      # TODO: Check how Repo.all handles errors
+      {:error, _} = err ->
+        err
+    end
+  end
+
   def get_type(store, source) do
     {module, settings} = get_storage(store)
-    apply(module, :get_type, [settings, source])
+
+    case apply(module, :get_type, [settings, source]) do
+      {:ok, definition} ->
+        definition = set_type_store(definition, store)
+        {:ok, definition}
+
+      {:error, _} = err ->
+        err
+    end
   end
 
   def put_type(store, definition) do
     {module, settings} = get_storage(store)
     apply(module, :put_type, [settings, definition])
+  end
+
+  def set_type_store(%{ephemeral: ephemeral} = definition, store) do
+    %{definition | ephemeral: Map.put(ephemeral, :store, store)}
   end
 
   def list_types(store) do
@@ -109,6 +147,17 @@ defmodule EctoEntity.Store do
         nil -> put_in(config, path, default_value)
         _ -> config
       end
+    end)
+  end
+
+  defp result_to_items(repo_module, result) do
+    %{columns: columns, rows: rows} = result
+
+    Enum.map(rows, fn row ->
+      Enum.zip(columns, row)
+      |> Map.new()
+
+      # TODO: Map according to repo/adaptor
     end)
   end
 end

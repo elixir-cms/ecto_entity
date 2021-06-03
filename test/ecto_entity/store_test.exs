@@ -38,7 +38,7 @@ defmodule EctoEntity.StoreTest do
 
   @config %{
     type_storage: %{module: StorageTest, settings: @settings},
-    repo: %{module: TestRepo, dynamic: false}
+    repo: %{module: Ecto.TestRepo, dynamic: false}
   }
   @label "Post"
   @source "posts"
@@ -51,6 +51,13 @@ defmodule EctoEntity.StoreTest do
       set
       |> Type.add_field!("title", "string", "text", required: true, nullable: false)
     end)
+  end
+
+  defp strip_ephemeral(type) do
+    case type do
+      {:ok, type} -> {:ok, Map.put(type, :ephemeral, %{})}
+      type -> Map.put(type, :ephemeral, %{})
+    end
   end
 
   describe "test store" do
@@ -73,7 +80,7 @@ defmodule EctoEntity.StoreTest do
       type = new_type()
       assert :ok = Store.put_type(store, type)
 
-      assert {:ok, type} == Store.get_type(store, @source)
+      assert {:ok, type} == Store.get_type(store, @source) |> strip_ephemeral()
     end
   end
 
@@ -124,7 +131,22 @@ defmodule EctoEntity.StoreTest do
       type = new_type()
       assert :ok = Store.put_type(store, type)
 
-      assert {:ok, type} == Store.get_type(store, @source)
+      assert {:ok, type} == Store.get_type(store, @source) |> strip_ephemeral()
+    end
+  end
+
+  describe "loading" do
+    test "load data for definition using repo" do
+      store = Store.init(@config)
+      type = new_type()
+      assert :ok = Store.put_type(store, type)
+      {:ok, type} = Store.get_type(store, @source)
+      # We now have a type with store ephemerals
+      assert %{"title" => "foo"} = EctoEntity.Entity.load(type, %{"title" => "foo"})
+
+      assert_raise ArgumentError, fn ->
+        EctoEntity.Entity.load(type, %{"title" => 5})
+      end
     end
   end
 end
