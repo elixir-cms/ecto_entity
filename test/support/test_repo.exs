@@ -1,159 +1,232 @@
-defmodule Ecto.TestAdapter do
-  # Ripped from Ecto
-  @behaviour Ecto.Adapter
-  @behaviour Ecto.Adapter.Queryable
-  @behaviour Ecto.Adapter.Schema
-  @behaviour Ecto.Adapter.Transaction
+defmodule MigrationsAgent do
+  use Agent
 
-  defmacro __before_compile__(_opts), do: :ok
-
-  def ensure_all_started(_, _) do
-    {:ok, []}
+  def start_link(versions) do
+    Agent.start_link(fn -> versions end, name: __MODULE__)
   end
 
+  def get do
+    Agent.get(__MODULE__, & &1)
+  end
+
+  def up(version, opts) do
+    Agent.update(__MODULE__, &[{version, opts[:prefix]} | &1])
+  end
+
+  def down(version, opts) do
+    Agent.update(__MODULE__, &List.delete(&1, {version, opts[:prefix]}))
+  end
+end
+
+defmodule EctoSQL.TestServer do
+  use GenServer
+
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, opts)
+  end
+
+  @impl true
   def init(opts) do
-    :ecto = opts[:otp_app]
-    "user" = opts[:username]
-    "pass" = opts[:password]
-    "hello" = opts[:database]
-    "local" = opts[:hostname]
-
-    {:ok, Supervisor.child_spec({Task, fn -> :timer.sleep(:infinity) end}, []), %{meta: :meta}}
+    {:ok, opts}
   end
+end
 
-  def checkout(mod, _opts, fun) do
-    send(self(), {:checkout, fun})
-    Process.put({mod, :checked_out?}, true)
+defmodule EctoSQL.TestAdapter do
+  defmodule Connection do
+    @behaviour Ecto.Adapters.SQL.Connection
 
-    try do
-      fun.()
-    after
-      Process.delete({mod, :checked_out?})
+    ## Module and Options
+
+    @impl true
+    def child_spec(opts) do
+      EctoSQL.TestServer.child_spec(opts)
+    end
+
+    @impl true
+    def to_constraints(err, opts) do
+      send(self(), {:to_constraints, err, opts})
+      []
+    end
+
+    ## Query
+
+    @impl true
+    def prepare_execute(conn, name, sql, params, opts) do
+      send(self(), {:prepare_execute, conn, name, sql, params, opts})
+      {:ok, sql, :fine}
+    end
+
+    @impl true
+    def query(conn, sql, params, opts) do
+      send(self(), {:query, conn, sql, params, opts})
+
+      case String.downcase(sql) do
+        "insert " <> _ -> {:ok, %{num_rows: 1}}
+        _ -> {:ok, %{columns: [], rows: []}}
+      end
+    end
+
+    @impl true
+    def execute(conn, query, params, opts) do
+      send(self(), {:execute, conn, query, params, opts})
+      {:ok, %{columns: [], rows: []}}
+    end
+
+    @impl true
+    def stream(conn, sql, params, opts) do
+      send(self(), {:stream, conn, sql, params, opts})
+      Stream.map([1, 2, 3], fn i -> i end)
+    end
+
+    @impl true
+    def all(query, as_prefix \\ []) do
+      send(self(), {:all, query, as_prefix})
+      query
+    end
+
+    @impl true
+    def update_all(query, prefix \\ nil) do
+      send(self(), {:update_all, query, prefix})
+      query
+    end
+
+    @impl true
+    def delete_all(query) do
+      send(self(), {:delete_all, query})
+      query
+    end
+
+    @impl true
+    def insert(prefix, table, header, rows, on_conflict, returning, placeholders) do
+      send(self(), {:insert, prefix, table, header, rows, on_conflict, returning, placeholders})
+      "insert"
+    end
+
+    @impl true
+    def update(prefix, table, fields, filters, returning) do
+      send(self(), {:update, prefix, table, fields, filters, returning})
+      "update"
+    end
+
+    @impl true
+    def delete(prefix, table, filters, returning) do
+      send(self(), {:delete, prefix, table, filters, returning})
+      "delete"
+    end
+
+    @impl true
+    def ddl_logs(result) do
+      send(self(), {:ddl_logs, result})
+      raise "not implemented"
+    end
+
+    @impl true
+    def execute_ddl(command) do
+      send(self(), {:execute_ddl, command})
+      raise "not implemented"
+    end
+
+    @impl true
+    def explain_query(connection, query, params, opts) do
+      send(self(), {:explain_query, connection, query, params, opts})
+      raise "not implemented"
+    end
+
+    @impl true
+    def table_exists_query(table) do
+      send(self(), {:table_exists_query, table})
+      raise "not implemented"
     end
   end
 
-  def checked_out?(mod) do
-    Process.get({mod, :checked_out?}) || false
-  end
+  use Ecto.Adapters.SQL, driver: :test
+  #  @behaviour Ecto.Adapter
+  #  @behaviour Ecto.Adapter.Queryable
+  #  @behaviour Ecto.Adapter.Schema
+  #  @behaviour Ecto.Adapter.Transaction
+  #  @behaviour Ecto.Adapter.Migration
+
+  defmacro __before_compile__(_opts), do: :ok
+  def ensure_all_started(_, _), do: {:ok, []}
+
+  def checked_out?(_), do: raise("not implemented")
 
   ## Types
 
-  def loaders(:binary_id, type), do: [Ecto.UUID, type]
   def loaders(_primitive, type), do: [type]
-
-  def dumpers(:binary_id, type), do: [type, Ecto.UUID]
   def dumpers(_primitive, type), do: [type]
-
-  def autogenerate(:id), do: nil
-  def autogenerate(:embed_id), do: Ecto.UUID.autogenerate()
-  def autogenerate(:binary_id), do: Ecto.UUID.bingenerate()
+  def autogenerate(_), do: nil
 
   ## Queryable
 
   def prepare(operation, query), do: {:nocache, {operation, query}}
 
-  def execute(_, _, {:nocache, {:all, query}}, _, _) do
-    send(self(), {:all, query})
-    Process.get(:test_repo_all_results) || results_for_all_query(query)
+  # Migration emulation
+
+  def execute(_, _, {:nocache, {:all, %{from: %{source: {"schema_migrations", _}}}}}, _, opts) do
+    true = opts[:schema_migration]
+    versions = MigrationsAgent.get()
+    {length(versions), Enum.map(versions, &[elem(&1, 0)])}
   end
 
-  def execute(_, _meta, {:nocache, {op, query}}, _params, _opts) do
-    send(self(), {op, query})
+  def execute(
+        _,
+        _meta,
+        {:nocache, {:delete_all, %{from: %{source: {"schema_migrations", _}}}}},
+        [version],
+        opts
+      ) do
+    true = opts[:schema_migration]
+    MigrationsAgent.down(version, opts)
     {1, nil}
   end
 
-  def stream(_, _meta, {:nocache, {:all, query}}, _params, _opts) do
-    Stream.map([:execute], fn :execute ->
-      send(self(), {:stream, query})
-      results_for_all_query(query)
-    end)
-  end
-
-  defp results_for_all_query(%{select: %{fields: [_ | _] = fields}}) do
-    values = List.duplicate(nil, length(fields) - 1)
-    {1, [[1 | values]]}
-  end
-
-  defp results_for_all_query(%{select: %{fields: []}}) do
-    {1, [[]]}
-  end
-
-  ## Schema
-
-  def insert_all(_, meta, header, rows, on_conflict, returning, _placeholders, _opts) do
-    meta = Map.merge(meta, %{header: header, on_conflict: on_conflict, returning: returning})
-    send(self(), {:insert_all, meta, rows})
-    {1, nil}
-  end
-
-  def insert(_, %{context: nil} = meta, fields, on_conflict, returning, _opts) do
-    meta = Map.merge(meta, %{fields: fields, on_conflict: on_conflict, returning: returning})
-    send(self(), {:insert, meta})
-    {:ok, Enum.zip(returning, 1..length(returning))}
-  end
-
-  def insert(_, %{context: context}, _fields, _on_conflict, _returning, _opts) do
-    context
-  end
-
-  # Notice the list of changes is never empty.
-  def update(_, %{context: nil} = meta, [_ | _] = changes, filters, returning, _opts) do
-    meta = Map.merge(meta, %{changes: changes, filters: filters, returning: returning})
-    send(self(), {:update, meta})
-    {:ok, Enum.zip(returning, 1..length(returning))}
-  end
-
-  def update(_, %{context: context}, [_ | _], _filters, _returning, _opts) do
-    context
-  end
-
-  def delete(_, %{context: nil} = meta, filters, _opts) do
-    meta = Map.merge(meta, %{filters: filters})
-    send(self(), {:delete, meta})
+  def insert(_, %{source: "schema_migrations"}, val, _, _, opts) do
+    true = opts[:schema_migration]
+    version = Keyword.fetch!(val, :version)
+    MigrationsAgent.up(version, opts)
     {:ok, []}
   end
 
-  def delete(_, %{context: context}, _filters, _opts) do
-    context
+  ## Migrations
+
+  def lock_for_migrations(mod, opts, fun) do
+    send(test_process(), {:lock_for_migrations, mod, fun, opts})
+    fun.()
   end
 
-  ## Transactions
-
-  def transaction(mod, _opts, fun) do
-    # Makes transactions "trackable" in tests
-    Process.put({mod, :in_transaction?}, true)
-    send(self(), {:transaction, fun})
-
-    try do
-      {:ok, fun.()}
-    catch
-      :throw, {:ecto_rollback, value} ->
-        {:error, value}
-    after
-      Process.delete({mod, :in_transaction?})
-    end
+  def execute_ddl(_, command, _) do
+    Process.put(:last_command, command)
+    {:ok, []}
   end
 
-  def in_transaction?(mod) do
-    Process.get({mod, :in_transaction?}) || false
+  def supports_ddl_transaction? do
+    get_config(:supports_ddl_transaction?, false)
   end
 
-  def rollback(_, value) do
-    send(self(), {:rollback, value})
-    throw({:ecto_rollback, value})
+  defp test_process do
+    get_config(:test_process, self())
+  end
+
+  defp get_config(name, default) do
+    :ecto_sql
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(name, default)
   end
 end
 
-Application.put_env(:ecto, Ecto.TestRepo, user: "invalid")
+defmodule EctoSQL.TestRepo do
+  use Ecto.Repo, otp_app: :ecto_sql, adapter: EctoSQL.TestAdapter
 
-defmodule Ecto.TestRepo do
-  use Ecto.Repo, otp_app: :ecto, adapter: Ecto.TestAdapter
-
-  def init(type, opts) do
-    opts = [url: "ecto://user:pass@local/hello"] ++ opts
-    opts[:parent] && send(opts[:parent], {__MODULE__, type, opts})
-    {:ok, opts}
+  def default_options(_operation) do
+    Process.get(:repo_default_options, [])
   end
 end
 
-Ecto.TestRepo.start_link()
+defmodule EctoSQL.MigrationTestRepo do
+  use Ecto.Repo, otp_app: :ecto_sql, adapter: EctoSQL.TestAdapter
+end
+
+EctoSQL.TestRepo.start_link()
+EctoSQL.TestRepo.start_link(name: :tenant_db)
+EctoSQL.MigrationTestRepo.start_link()

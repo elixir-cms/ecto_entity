@@ -38,7 +38,7 @@ defmodule EctoEntity.StoreTest do
 
   @config %{
     type_storage: %{module: StorageTest, settings: @settings},
-    repo: %{module: Ecto.TestRepo, dynamic: false}
+    repo: %{module: EctoSQL.TestRepo, dynamic: false}
   }
   @label "Post"
   @source "posts"
@@ -136,7 +136,7 @@ defmodule EctoEntity.StoreTest do
   end
 
   describe "loading" do
-    test "load data for definition using repo" do
+    test "load/cast data for definition using repo" do
       store = Store.init(@config)
       type = new_type()
       assert :ok = Store.put_type(store, type)
@@ -147,6 +147,44 @@ defmodule EctoEntity.StoreTest do
       assert_raise ArgumentError, fn ->
         EctoEntity.Entity.load(type, %{"title" => 5})
       end
+    end
+  end
+
+  describe "queries" do
+    test "create" do
+      store = Store.init(@config)
+      type = new_type()
+      assert :ok = Store.put_type(store, type)
+      {:ok, type} = Store.get_type(store, @source)
+      # We now have a type with store ephemerals
+      assert {:ok, 1} = Store.insert(type, %{"title" => "foo"})
+      assert_receive {:query, _, query, params, _}
+      assert "insert into posts (title) values ($1)" = String.downcase(query)
+      assert ["foo"] = params
+    end
+
+    test "create with bad source" do
+      store = Store.init(@config)
+      type = new_type()
+      assert :ok = Store.put_type(store, type)
+      {:ok, type} = Store.get_type(store, @source)
+      # We now have a type with store ephemerals
+      assert {:ok, 1} = Store.insert(%{type | source: "posts;!=#"}, %{"title" => "foo"})
+      assert_receive {:query, _, query, params, _}
+      assert "insert into posts (title) values ($1)" = String.downcase(query)
+      assert ["foo"] = params
+    end
+
+    test "create with bad field" do
+      store = Store.init(@config)
+      type = new_type()
+      assert :ok = Store.put_type(store, type)
+      {:ok, type} = Store.get_type(store, @source)
+      # We now have a type with store ephemerals
+      assert {:ok, 1} = Store.insert(type, %{"title';''='" => "foo"})
+      assert_receive {:query, _, query, params, _}
+      assert "insert into posts (title) values ($1)" = String.downcase(query)
+      assert ["foo"] = params
     end
   end
 end

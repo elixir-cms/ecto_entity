@@ -45,23 +45,57 @@ defmodule EctoEntity.Store do
     |> init()
   end
 
-  # TODO: Implement list, get create, update, delete
+  # TODO: Implement list, get, create, update, delete
   def list(%Type{ephemeral: %{store: store}} = definition) when not is_nil(store) do
-    list(store, definition)
+    repo_module = set_dynamic(store)
+
+    source = cleanse_source(definition)
+
+    case Ecto.Adapters.SQL.query(repo_module, "select * from #{source}", []) do
+      {:ok, result} ->
+        result_to_items(definition, result)
+
+      # TODO: Check how Repo.all handles errors
+      {:error, _} = err ->
+        err
+    end
   end
 
   def list(%Store{} = store, %Type{} = definition) do
-    %{config: %{repo: %{module: repo_module, dynamic: dynamic}}} = store
+    definition
+    |> set_type_store(store)
+    |> list()
+  end
 
-    if not is_nil(dynamic) do
-      repo_module.put_dynamic_repo(dynamic)
-    end
+  def insert(%Type{ephemeral: %{store: store}} = definition, entity) when not is_nil(store) do
+    repo_module = set_dynamic(store)
 
-    case Ecto.Adapter.SQL.query(repo_module, "select * from #{definition.source}", []) do
-      {:ok, result} ->
-        result_to_items(repo_module, result)
+    source = cleanse_source(definition)
+    # TODO: Restrict character set for field names, replace anything not very valid
+    columns =
+      entity
+      |> Map.keys()
+      |> Enum.map(&cleanse_field_name/1)
+      |> Enum.join(", ")
 
-      # TODO: Check how Repo.all handles errors
+    values = Map.values(entity)
+
+    value_holders =
+      values
+      |> Enum.with_index()
+      |> Enum.map(fn {_value, index} ->
+        "$#{index + 1}"
+      end)
+      |> Enum.join(", ")
+
+    case Ecto.Adapters.SQL.query(
+           repo_module,
+           "insert into #{source} (#{columns}) values (#{value_holders})",
+           values
+         ) do
+      {:ok, %{num_rows: count}} ->
+        {:ok, count}
+
       {:error, _} = err ->
         err
     end
@@ -150,14 +184,36 @@ defmodule EctoEntity.Store do
     end)
   end
 
-  defp result_to_items(repo_module, result) do
+  defp result_to_items(definition, result) do
     %{columns: columns, rows: rows} = result
 
     Enum.map(rows, fn row ->
-      Enum.zip(columns, row)
-      |> Map.new()
+      item =
+        columns
+        |> Enum.zip(row)
 
-      # TODO: Map according to repo/adaptor
+      EctoEntity.Entity.load(definition, item)
     end)
+  end
+
+  defp set_dynamic(store) do
+    %{config: %{repo: %{module: repo_module, dynamic: dynamic}}} = store
+
+    if not is_nil(dynamic) and dynamic do
+      repo_module.put_dynamic_repo(dynamic)
+    end
+
+    repo_module
+  end
+
+  defp cleanse_source(%{source: source}) do
+    # Strip out all expect A-Z a-z 0-9 - _
+    Regex.replace(~r/[^A-Za-z0-9-_]/, source, "")
+  end
+
+  defp cleanse_field_name(field) do
+    # Strip out all expect A-Z a-z 0-9 - _
+    # SQL does allow pretty much anything, we don't.
+    Regex.replace(~r/[^A-Za-z0-9-_]/, field, "")
   end
 end
