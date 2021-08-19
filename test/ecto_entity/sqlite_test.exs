@@ -29,11 +29,6 @@ defmodule EctoEntity.SqliteTest do
     {:ok, _result} = Ecto.Adapters.SQL.query(repo, "create table #{@source} (title text, body text)", [])
   end
 
-  @label "Post"
-  @source "posts"
-  @singular "post"
-  @plural "posts"
-
   defp get_config(tmp_dir, repo) do
     %{
       type_storage: %{
