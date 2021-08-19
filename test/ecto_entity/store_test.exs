@@ -50,6 +50,7 @@ defmodule EctoEntity.StoreTest do
     |> Type.migration_defaults!(fn set ->
       set
       |> Type.add_field!("title", "string", "text", required: true, nullable: false)
+      |> Type.add_field!("body", "string", "text", required: false, nullable: true)
     end)
   end
 
@@ -150,37 +151,82 @@ defmodule EctoEntity.StoreTest do
   end
 
   describe "queries" do
-    test "create" do
+    setup do
       store = Store.init(@config)
       type = new_type()
-      assert {:ok, type} = Store.put_type(store, type)
+      {:ok, type} = Store.put_type(store, type)
       # We now have a type with store ephemerals
-      assert {:ok, 1} = Store.insert(type, %{"title" => "foo"})
-      assert_receive {:query, _, query, params, _}
-      assert "insert into posts (title) values ($1)" = String.downcase(query)
-      assert ["foo"] = params
+      {:ok, type: type}
     end
 
-    test "create with bad source" do
-      store = Store.init(@config)
-      type = new_type()
-      assert {:ok, type} = Store.put_type(store, type)
-      # We now have a type with store ephemerals
+    test "create", %{type: type} do
+      assert {:ok, 1} = Store.insert(type, %{"title" => "foo", "body" => "bar"})
+      assert_receive {:query, _, query, params, _}
+      assert "insert into posts (body, title) values ($1, $2)" = String.downcase(query)
+      assert ["bar", "foo"] = params
+    end
+
+    test "create with bad source", %{type: type} do
       assert {:ok, 1} = Store.insert(%{type | source: "posts;!=#"}, %{"title" => "foo"})
       assert_receive {:query, _, query, params, _}
       assert "insert into posts (title) values ($1)" = String.downcase(query)
       assert ["foo"] = params
     end
 
-    test "create with bad field" do
-      store = Store.init(@config)
-      type = new_type()
-      assert {:ok, type} = Store.put_type(store, type)
-      # We now have a type with store ephemerals
+    test "create with bad field", %{type: type} do
       assert {:ok, 1} = Store.insert(type, %{"title';''='" => "foo"})
       assert_receive {:query, _, query, params, _}
       assert "insert into posts (title) values ($1)" = String.downcase(query)
       assert ["foo"] = params
+    end
+
+    test "list", %{type: type} do
+      assert [] = Store.list(type)
+      assert_receive {:query, _, query, params, _}
+      assert "select * from posts" = String.downcase(query)
+      assert [] = params
+    end
+
+    test "list with bad source", %{type: type} do
+      assert [] = Store.list(%{type | source: "posts;!=#"})
+      assert_receive {:query, _, query, params, _}
+      assert "select * from posts" = String.downcase(query)
+      assert [] = params
+    end
+
+    test "update", %{type: type} do
+      assert {:ok, 1} = Store.update(type, %{"id" => 5}, title: "foo", body: "bar")
+      assert_receive {:query, _, query, params, _}
+      assert "update posts set body=$1, title=$2 where id=$3" = String.downcase(query)
+      assert ["bar", "foo", 5] = params
+    end
+
+    test "update with bad source", %{type: type} do
+      assert {:ok, 1} = Store.update(%{type | source: "posts;!=#"}, %{"id" => 5}, title: "foo")
+      assert_receive {:query, _, query, params, _}
+      assert "update posts set title=$1 where id=$2" = String.downcase(query)
+      assert ["foo", 5] = params
+    end
+
+    test "update with bad field", %{type: type} do
+      assert {:ok, 1} = Store.update(type, %{"id" => 5}, %{"title';''='" => "foo"})
+      assert_receive {:query, _, query, params, _}
+      assert "update posts set title=$1 where id=$2" = String.downcase(query)
+      assert ["foo", 5] = params
+    end
+
+    test "delete", %{type: type} do
+      assert {:ok, 1} = Store.delete(type, %{"id" => 5})
+      assert_receive {:query, _, query, params, _}
+      assert "delete from posts where id=$1" = String.downcase(query)
+      assert [5] = params
+    end
+
+    test "delete with bad source", %{type: type} do
+      assert {:ok, 1} = Store.delete(%{type | source: "posts;!=#"}, %{"id" => 5})
+      assert_receive {:query, _, query, params, _}
+      assert "delete from posts where id=$1" = String.downcase(query)
+      assert [5] = params
     end
   end
 end

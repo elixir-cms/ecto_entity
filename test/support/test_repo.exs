@@ -62,6 +62,8 @@ defmodule EctoSQL.TestAdapter do
 
       case String.downcase(sql) do
         "insert " <> _ -> {:ok, %{num_rows: 1}}
+        "update" <> _ -> {:ok, %{num_rows: 1}}
+        "delete" <> _ -> {:ok, %{num_rows: 1}}
         _ -> {:ok, %{columns: [], rows: []}}
       end
     end

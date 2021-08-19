@@ -45,7 +45,6 @@ defmodule EctoEntity.Store do
     |> init()
   end
 
-  # TODO: Implement list, get, create, update, delete
   def list(%Type{ephemeral: %{store: store}} = definition) when not is_nil(store) do
     repo_module = set_dynamic(store)
 
@@ -55,9 +54,9 @@ defmodule EctoEntity.Store do
       {:ok, result} ->
         result_to_items(definition, result)
 
-      # TODO: Check how Repo.all handles errors
       {:error, _} = err ->
-        err
+        # Would be nice to add query info and stuff to this error
+        raise Ecto.QueryError
     end
   end
 
@@ -74,11 +73,19 @@ defmodule EctoEntity.Store do
 
     columns =
       entity
-      |> Map.keys()
+      |> Enum.sort()
+      |> Enum.map(fn {key, _value} ->
+        key
+      end)
       |> Enum.map(&cleanse_field_name/1)
       |> Enum.join(", ")
 
-    values = Map.values(entity)
+    values =
+      entity
+      |> Enum.sort()
+      |> Enum.map(fn {_key, value} ->
+        value
+      end)
 
     value_holders =
       values
@@ -101,7 +108,74 @@ defmodule EctoEntity.Store do
     end
   end
 
-  def insert(%Type{ephemeral: %{store: store}} = definition, entity) when not is_nil(store) do
+  def update(%Type{ephemeral: %{store: store}} = definition, %{"id" => id} = _entity, updates_kv) when not is_nil(store) do
+    updates = Enum.into(updates_kv, %{})
+    repo_module = set_dynamic(store)
+
+    source = cleanse_source(definition)
+
+    {changes, last_index} =
+      updates
+      |> Enum.sort()
+      |> Enum.map(fn {key, _value} ->
+        key
+      end)
+      |> Enum.reduce({[], 1}, fn field, {changes, index} ->
+        field = case field do
+          field when is_atom(field) ->
+            Atom.to_string(field)
+          field when is_binary(field) ->
+            field
+        end
+
+        field = cleanse_field_name(field)
+        change = "#{field}=$#{index}"
+        {[change | changes], index + 1}
+      end)
+
+    changes =
+      changes
+      |> Enum.reverse()
+      |> Enum.join(", ")
+
+    values =
+      updates
+      |> Enum.sort()
+      |> Enum.map(fn {_key, value} ->
+        value
+      end)
+
+    values = values ++ [id]
+
+    case Ecto.Adapters.SQL.query(
+           repo_module,
+           "update #{source} set #{changes} where id=$#{last_index}",
+           values
+         ) do
+      {:ok, %{num_rows: count}} ->
+        {:ok, count}
+
+      {:error, _} = err ->
+        err
+    end
+  end
+
+  def delete(%Type{ephemeral: %{store: store}} = definition, %{"id" => id} = _entity) when not is_nil(store) do
+    repo_module = set_dynamic(store)
+    source = cleanse_source(definition)
+
+    case Ecto.Adapters.SQL.query(
+           repo_module,
+           "delete from #{source} where id=$1",
+           [id]
+         ) do
+      {:ok, %{num_rows: count}} ->
+        {:ok, count}
+
+      {:error, _} = err ->
+        err
+    end
+
   end
 
   def get_type(store, source) do
