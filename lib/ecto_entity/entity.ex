@@ -16,6 +16,7 @@ defmodule EctoEntity.Entity do
     # Based off of Ecto.Repo.Schema.load/3
     %{config: %{repo: %{module: repo}}} = store
     loader = &Ecto.Type.adapter_load(repo.__adapter__, &1, &2)
+    data = Enum.into(data, %{})
 
     Enum.reduce(definition.fields, %{}, fn {field, field_opts}, acc ->
       %{field_type: type} = field_opts

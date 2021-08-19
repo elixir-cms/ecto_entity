@@ -46,11 +46,11 @@ defmodule EctoEntity.Store do
   end
 
   def list(%Type{ephemeral: %{store: store}} = definition) when not is_nil(store) do
-    repo_module = set_dynamic(store)
+    repo = set_dynamic(store)
 
     source = cleanse_source(definition)
 
-    case Ecto.Adapters.SQL.query(repo_module, "select * from #{source}", []) do
+    case Ecto.Adapters.SQL.query(repo, "select * from #{source}", []) do
       {:ok, result} ->
         result_to_items(definition, result)
 
@@ -67,7 +67,7 @@ defmodule EctoEntity.Store do
   end
 
   def insert(%Type{ephemeral: %{store: store}} = definition, entity) when not is_nil(store) do
-    repo_module = set_dynamic(store)
+    repo = set_dynamic(store)
 
     source = cleanse_source(definition)
 
@@ -96,7 +96,7 @@ defmodule EctoEntity.Store do
       |> Enum.join(", ")
 
     case Ecto.Adapters.SQL.query(
-           repo_module,
+           repo,
            "insert into #{source} (#{columns}) values (#{value_holders})",
            values
          ) do
@@ -110,7 +110,7 @@ defmodule EctoEntity.Store do
 
   def update(%Type{ephemeral: %{store: store}} = definition, %{"id" => id} = _entity, updates_kv) when not is_nil(store) do
     updates = Enum.into(updates_kv, %{})
-    repo_module = set_dynamic(store)
+    repo = set_dynamic(store)
 
     source = cleanse_source(definition)
 
@@ -148,7 +148,7 @@ defmodule EctoEntity.Store do
     values = values ++ [id]
 
     case Ecto.Adapters.SQL.query(
-           repo_module,
+           repo,
            "update #{source} set #{changes} where id=$#{last_index}",
            values
          ) do
@@ -161,11 +161,11 @@ defmodule EctoEntity.Store do
   end
 
   def delete(%Type{ephemeral: %{store: store}} = definition, %{"id" => id} = _entity) when not is_nil(store) do
-    repo_module = set_dynamic(store)
+    repo = set_dynamic(store)
     source = cleanse_source(definition)
 
     case Ecto.Adapters.SQL.query(
-           repo_module,
+           repo,
            "delete from #{source} where id=$1",
            [id]
          ) do
@@ -225,11 +225,11 @@ defmodule EctoEntity.Store do
   end
 
   def remove_all_data(%Type{ephemeral: %{store: store}} = definition) when not is_nil(store) do
-    repo_module = set_dynamic(store)
+    repo = set_dynamic(store)
     source = cleanse_source(definition)
 
     case Ecto.Adapters.SQL.query(
-           repo_module,
+           repo,
            "delete from #{source}",
            []
          ) do
@@ -242,11 +242,11 @@ defmodule EctoEntity.Store do
   end
 
   def drop_table(%Type{ephemeral: %{store: store}} = definition) when not is_nil(store) do
-    repo_module = set_dynamic(store)
+    repo = set_dynamic(store)
     source = cleanse_source(definition)
 
     case Ecto.Adapters.SQL.query(
-           repo_module,
+           repo,
            "drop table #{source}",
            []
          ) do
@@ -306,9 +306,10 @@ defmodule EctoEntity.Store do
 
     if not is_nil(dynamic) and dynamic do
       repo_module.put_dynamic_repo(dynamic)
+      dynamic
+    else
+      repo_module
     end
-
-    repo_module
   end
 
   defp cleanse_source(%{source: source}) do
