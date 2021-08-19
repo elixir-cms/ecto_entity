@@ -71,7 +71,7 @@ defmodule EctoEntity.Store do
     repo_module = set_dynamic(store)
 
     source = cleanse_source(definition)
-    # TODO: Restrict character set for field names, replace anything not very valid
+
     columns =
       entity
       |> Map.keys()
@@ -101,6 +101,9 @@ defmodule EctoEntity.Store do
     end
   end
 
+  def insert(%Type{ephemeral: %{store: store}} = definition, entity) when not is_nil(store) do
+  end
+
   def get_type(store, source) do
     {module, settings} = get_storage(store)
 
@@ -114,9 +117,14 @@ defmodule EctoEntity.Store do
     end
   end
 
-  def put_type(store, definition) do
+  def put_type(store, %{source: source} = definition) do
     {module, settings} = get_storage(store)
-    apply(module, :put_type, [settings, definition])
+    case apply(module, :put_type, [settings, definition]) do
+      :ok ->
+        get_type(store, source)
+      err -> err
+    end
+
   end
 
   def set_type_store(%{ephemeral: ephemeral} = definition, store) do

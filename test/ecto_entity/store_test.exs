@@ -78,7 +78,7 @@ defmodule EctoEntity.StoreTest do
     test "put type, get type success" do
       store = Store.init(@config)
       type = new_type()
-      assert :ok = Store.put_type(store, type)
+      assert {:ok, _type} = Store.put_type(store, type)
 
       assert {:ok, type} == Store.get_type(store, @source) |> strip_ephemeral()
     end
@@ -129,7 +129,7 @@ defmodule EctoEntity.StoreTest do
 
       store = Store.init(config)
       type = new_type()
-      assert :ok = Store.put_type(store, type)
+      assert {:ok, _type} = Store.put_type(store, type)
 
       assert {:ok, type} == Store.get_type(store, @source) |> strip_ephemeral()
     end
@@ -139,8 +139,7 @@ defmodule EctoEntity.StoreTest do
     test "load/cast data for definition using repo" do
       store = Store.init(@config)
       type = new_type()
-      assert :ok = Store.put_type(store, type)
-      {:ok, type} = Store.get_type(store, @source)
+      assert {:ok, type} = Store.put_type(store, type)
       # We now have a type with store ephemerals
       assert %{"title" => "foo"} = EctoEntity.Entity.load(type, %{"title" => "foo"})
 
@@ -154,8 +153,7 @@ defmodule EctoEntity.StoreTest do
     test "create" do
       store = Store.init(@config)
       type = new_type()
-      assert :ok = Store.put_type(store, type)
-      {:ok, type} = Store.get_type(store, @source)
+      assert {:ok, type} = Store.put_type(store, type)
       # We now have a type with store ephemerals
       assert {:ok, 1} = Store.insert(type, %{"title" => "foo"})
       assert_receive {:query, _, query, params, _}
@@ -166,8 +164,7 @@ defmodule EctoEntity.StoreTest do
     test "create with bad source" do
       store = Store.init(@config)
       type = new_type()
-      assert :ok = Store.put_type(store, type)
-      {:ok, type} = Store.get_type(store, @source)
+      assert {:ok, type} = Store.put_type(store, type)
       # We now have a type with store ephemerals
       assert {:ok, 1} = Store.insert(%{type | source: "posts;!=#"}, %{"title" => "foo"})
       assert_receive {:query, _, query, params, _}
@@ -178,8 +175,7 @@ defmodule EctoEntity.StoreTest do
     test "create with bad field" do
       store = Store.init(@config)
       type = new_type()
-      assert :ok = Store.put_type(store, type)
-      {:ok, type} = Store.get_type(store, @source)
+      assert {:ok, type} = Store.put_type(store, type)
       # We now have a type with store ephemerals
       assert {:ok, 1} = Store.insert(type, %{"title';''='" => "foo"})
       assert_receive {:query, _, query, params, _}
