@@ -30,6 +30,15 @@ defmodule EctoEntity.StoreTest do
     end
 
     @impl true
+    def remove_type(settings, source) do
+      assert @settings == settings
+      with {:ok, _type} <- get_type(settings, source) do
+        Process.delete(source)
+        :ok
+      end
+    end
+
+    @impl true
     def list_types(settings) do
       assert @settings == settings
       Process.get_keys()
@@ -83,19 +92,39 @@ defmodule EctoEntity.StoreTest do
 
       assert {:ok, type} == Store.get_type(store, @source) |> strip_ephemeral()
     end
+
+    test "remove type, missing" do
+      {:error, err} =
+        @config
+        |> Store.init()
+        |> Store.remove_type(@source)
+
+      assert %Error{type: :not_found} = err
+    end
+
+    test "remove type success" do
+      store = Store.init(@config)
+      type = new_type()
+      assert {:ok, _type} = Store.put_type(store, type)
+
+      assert :ok == Store.remove_type(store, @source)
+    end
   end
 
   describe "json store" do
-    @tag :tmp_dir
-    test "init", %{tmp_dir: tmp_dir} do
-      config = %{
+    defp config_json(tmp_dir) do
+      %{
         type_storage: %{
           module: EctoEntity.Store.SimpleJson,
           settings: %{directory_path: tmp_dir}
         },
         repo: %{module: TestRepo}
       }
+    end
 
+    @tag :tmp_dir
+    test "init", %{tmp_dir: tmp_dir} do
+      config = config_json(tmp_dir)
       assert %Store{
                config: %{
                  type_storage: %{
@@ -108,10 +137,7 @@ defmodule EctoEntity.StoreTest do
 
     @tag :tmp_dir
     test "get type missing", %{tmp_dir: tmp_dir} do
-      config = %{
-        type_storage: %{module: EctoEntity.Store.SimpleJson, settings: %{directory_path: tmp_dir}},
-        repo: %{module: TestRepo}
-      }
+      config = config_json(tmp_dir)
 
       {:error, err} =
         config
@@ -123,16 +149,33 @@ defmodule EctoEntity.StoreTest do
 
     @tag :tmp_dir
     test "put type, get type success", %{tmp_dir: tmp_dir} do
-      config = %{
-        type_storage: %{module: EctoEntity.Store.SimpleJson, settings: %{directory_path: tmp_dir}},
-        repo: %{module: TestRepo}
-      }
-
+      config = config_json(tmp_dir)
       store = Store.init(config)
       type = new_type()
       assert {:ok, _type} = Store.put_type(store, type)
 
       assert {:ok, type} == Store.get_type(store, @source) |> strip_ephemeral()
+    end
+
+    @tag :tmp_dir
+    test "remove type, missing", %{tmp_dir: tmp_dir} do
+      config = config_json(tmp_dir)
+      {:error, err} =
+        config
+        |> Store.init()
+        |> Store.remove_type(@source)
+
+      assert %Error{type: :not_found} = err
+    end
+
+    @tag :tmp_dir
+    test "remove type success", %{tmp_dir: tmp_dir} do
+      config = config_json(tmp_dir)
+      store = Store.init(config)
+      type = new_type()
+      assert {:ok, _type} = Store.put_type(store, type)
+
+      assert :ok == Store.remove_type(store, @source)
     end
   end
 
@@ -227,6 +270,20 @@ defmodule EctoEntity.StoreTest do
       assert_receive {:query, _, query, params, _}
       assert "delete from posts where id=$1" = String.downcase(query)
       assert [5] = params
+    end
+
+    test "remove all data", %{type: type} do
+      assert {:ok, 1} = Store.remove_all_data(type)
+      assert_receive {:query, _, query, params, _}
+      assert "delete from posts" = String.downcase(query)
+      assert [] = params
+    end
+
+    test "drop table", %{type: type} do
+      assert :ok = Store.drop_table(type)
+      assert_receive {:query, _, query, params, _}
+      assert "drop table posts" = String.downcase(query)
+      assert [] = params
     end
   end
 end

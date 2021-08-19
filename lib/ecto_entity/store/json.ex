@@ -62,6 +62,26 @@ defmodule EctoEntity.Store.SimpleJson do
   end
 
   @impl true
+  def remove_type(%{directory_path: path}, source) do
+    File.mkdir_p!(path)
+
+    filepath = Path.join(path, "#{source}.json")
+
+    case File.rm(filepath) do
+      :ok -> :ok
+
+      {:error, :enoent} ->
+        {:error, error(:not_found, "File not found")}
+
+      {:error, err} when err in @assorted_file_errors ->
+        {:error, ferror(err)}
+
+      {:error, _} ->
+        {:error, error(:unknown, "Unknown error")}
+    end
+  end
+
+  @impl true
   def list_types(%{directory_path: path}) do
     File.mkdir_p!(path)
 

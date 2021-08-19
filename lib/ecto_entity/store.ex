@@ -198,7 +198,11 @@ defmodule EctoEntity.Store do
         get_type(store, source)
       err -> err
     end
+  end
 
+  def remove_type(store, source) do
+    {module, settings} = get_storage(store)
+    apply(module, :remove_type, [settings, source])
   end
 
   def set_type_store(%{ephemeral: ephemeral} = definition, store) do
@@ -220,19 +224,38 @@ defmodule EctoEntity.Store do
     raise "Not implemented"
   end
 
-  def remove_all_data(store, definition) do
-    # TODO: Implement
-    raise "Not implemented"
+  def remove_all_data(%Type{ephemeral: %{store: store}} = definition) when not is_nil(store) do
+    repo_module = set_dynamic(store)
+    source = cleanse_source(definition)
+
+    case Ecto.Adapters.SQL.query(
+           repo_module,
+           "delete from #{source}",
+           []
+         ) do
+      {:ok, %{num_rows: count}} ->
+        {:ok, count}
+
+      {:error, _} = err ->
+        err
+    end
   end
 
-  def remove_type(store, definition) when is_map(definition) do
-    # TODO: Implement
-    raise "Not implemented"
-  end
+  def drop_table(%Type{ephemeral: %{store: store}} = definition) when not is_nil(store) do
+    repo_module = set_dynamic(store)
+    source = cleanse_source(definition)
 
-  def remove_type(store, source) when is_binary(source) do
-    # TODO: Implement
-    raise "Not implemented"
+    case Ecto.Adapters.SQL.query(
+           repo_module,
+           "drop table #{source}",
+           []
+         ) do
+      {:ok, _} ->
+        :ok
+
+      {:error, _} = err ->
+        err
+    end
   end
 
   defp get_storage(store) do
