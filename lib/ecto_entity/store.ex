@@ -77,9 +77,8 @@ defmodule EctoEntity.Store do
       entity
       |> Enum.sort()
       |> Enum.map(fn {key, _value} ->
-        key
+        cleanse_field_name(key)
       end)
-      |> Enum.map(&cleanse_field_name/1)
 
     columns =
       if new_id do
@@ -88,8 +87,6 @@ defmodule EctoEntity.Store do
         columns
       end
 
-    columns = Enum.join(columns, ", ")
-
     values =
       entity
       |> Enum.sort()
@@ -97,32 +94,29 @@ defmodule EctoEntity.Store do
         value
       end)
 
-    value_holders =
-      values
-      |> Enum.with_index()
-      |> Enum.map(fn {_value, index} ->
-        "$#{index + 1}"
-      end)
-
-    {values, value_holders} =
+    values =
       if new_id do
-        values = [new_id | values]
-        value_holders = value_holders ++ ["$#{length(values)}"]
-        {values, value_holders}
+        [new_id | values]
       else
-        {values, value_holders}
+        values
       end
 
-    value_holders = Enum.join(value_holders, ", ")
+      connection_module = store.config.repo.module.__adapter__()
+                          |> Module.concat(Connection)
 
-    case Ecto.Adapters.SQL.query(
+      prefix = nil
+      sql = connection_module.insert(prefix, source, columns, [values], {:raise, nil, []}, [], [])
+
+      case Ecto.Adapters.SQL.query(
            repo,
-           "insert into #{source} (#{columns}) values (#{value_holders}) returning *",
+           #"insert into #{source} (#{columns}) values (#{value_holders}) returning *",
+           sql,
            values
          ) do
-      {:ok, result} ->
-        [item] = result_to_items(definition, result)
-        {:ok, item}
+      {:ok, _result} ->
+        # This could be done with RETURNING *, but that doesn't work in MySQL
+        #[item] = result_to_items(definition, result)
+        {:ok, nil}
 
       {:error, _} = err ->
         err
@@ -170,6 +164,8 @@ defmodule EctoEntity.Store do
       end)
 
     values = values ++ [id]
+
+
 
     case Ecto.Adapters.SQL.query(
            repo,
