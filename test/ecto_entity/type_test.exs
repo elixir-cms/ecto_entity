@@ -48,7 +48,7 @@ defmodule EctoEntity.TypeTest do
         set: [
           %{
             type: "add_primary_key",
-            primary_type: "binary_id"
+            primary_type: "uuid"
           },
           %{
             type: "add_timestamps"
@@ -236,15 +236,15 @@ defmodule EctoEntity.TypeTest do
              set: [
                %{
                  type: "add_primary_key",
-                 primary_type: "binary_id"
+                 primary_type: "uuid"
                }
              ]
            } = migration
 
     assert %{
              "id" => %{
-               field_type: "binary_id",
-               storage_type: "binary_id",
+               field_type: "string",
+               storage_type: "string",
                persistence_options: %{nullable: false, primary_key: true},
                validation_options: %{},
                filters: [],
@@ -303,7 +303,7 @@ defmodule EctoEntity.TypeTest do
              set: [
                %{
                  type: "add_primary_key",
-                 primary_type: "binary_id"
+                 primary_type: "uuid"
                },
                %{
                  type: "add_timestamps"
@@ -313,8 +313,8 @@ defmodule EctoEntity.TypeTest do
 
     assert %{
              "id" => %{
-               field_type: "binary_id",
-               storage_type: "binary_id",
+               field_type: "string",
+               storage_type: "string",
                persistence_options: %{nullable: false, primary_key: true},
                validation_options: %{},
                filters: [],

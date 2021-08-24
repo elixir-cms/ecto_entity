@@ -359,7 +359,7 @@ defmodule EctoEntity.Type do
     primary_type =
       case use_integer do
         true -> "integer"
-        false -> "binary_id"
+        false -> "uuid"
       end
 
     migration_set_item = %{
@@ -543,7 +543,7 @@ defmodule EctoEntity.Type do
     ecto_type =
       case item.primary_type do
         "integer" -> "id"
-        "binary_id" -> "binary_id"
+        "uuid" -> "string"
       end
 
     field = %{

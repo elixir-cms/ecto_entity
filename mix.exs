@@ -25,7 +25,9 @@ defmodule EctoEntity.MixProject do
       {:ecto, "~> 3.6"},
       {:jason, "~> 1.2", optional: true},
       {:ecto_sql, "~> 3.6", optional: true},
-      {:ecto_sqlite3, "~> 0.5.6", only: :test}
+      {:ecto_sqlite3, "~> 0.5.6", only: :test},
+      {:postgrex, "~> 0.15.10", only: :test},
+      {:myxql, "~> 0.5.1", only: :test}
     ]
   end
 end

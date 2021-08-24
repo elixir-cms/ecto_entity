@@ -1,0 +1,46 @@
+#!/bin/bash
+
+set -e
+
+# Clean up any existing test-DB
+docker stop ecto-entity-postgres || true
+docker rm ecto-entity-postgres || true
+
+# Create a new one
+docker run -p 127.0.0.1:5432:5432 --name ecto-entity-postgres -e POSTGRES_PASSWORD=testdbpass -d postgres:13
+
+# Wait for it to be accessible
+echo "Waiting for postgres..."
+while ! nc -z 127.0.0.1 5432; do sleep 1; done;
+echo "Ready"
+
+echo "Running tests..."
+# Run the postgres tests
+mix test test/ecto_entity/postgres_test.exs --include postgres
+
+# Clean up test-DB
+docker stop ecto-entity-postgres || true
+docker rm ecto-entity-postgres || true
+
+# Clean up any existing test-DB
+docker stop ecto-entity-mariadb || true
+docker rm ecto-entity-mariadb || true
+
+# Create a new one
+docker run -p 127.0.0.1:3306:3306 --name ecto-entity-mariadb -e MARIADB_ROOT_PASSWORD=testdbpass -d mariadb:10.3
+
+# Wait for it to be accessible
+echo "Waiting for MariaDB..."
+#while ! nc -z 127.0.0.1 3306; do sleep 1; done;
+#docker run --health-cmd='mysqladmin ping --silent' -d mariadb:10
+sleep 20
+#echo "Ready"
+
+echo "Running tests..."
+# Run the postgres tests
+mix test test/ecto_entity/mysql_test.exs --include mysql
+
+echo "Cleaning up..."
+# Clean up test-DB
+docker stop ecto-entity-mariadb || true
+docker rm ecto-entity-mariadb || true

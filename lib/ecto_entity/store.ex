@@ -66,6 +66,7 @@ defmodule EctoEntity.Store do
     |> list()
   end
 
+
   def insert(%Type{ephemeral: %{store: store}} = definition, entity) when not is_nil(store) do
     repo = set_dynamic(store)
     new_id = new_id_for_type(definition)
@@ -360,7 +361,7 @@ defmodule EctoEntity.Store do
 
     case field_options.storage_type do
       "id" -> nil
-      "binary_id" -> UUID.uuid1()
+      "string" -> UUID.uuid1()
     end
   end
 end
