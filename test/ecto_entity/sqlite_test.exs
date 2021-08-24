@@ -94,4 +94,24 @@ defmodule EctoEntity.SqliteTest do
     assert {:ok, 1} = Store.delete(type, entity)
     assert [] = Store.list(type)
   end
+
+  @tag :tmp_dir
+  test "remove all data", %{tmp_dir: dir} do
+    type = bootstrap(dir)
+    assert {:ok, _} = Store.insert(type, %{"title" => "foo", "body" => "bar"})
+    assert {:ok, _} = Store.insert(type, %{"title" => "foo", "body" => "bar"})
+    assert [%{}, %{}] = Store.list(type)
+    assert {:ok, 2} = Store.remove_all_data(type)
+    assert [] = Store.list(type)
+  end
+
+  @tag :tmp_dir
+  test "drop table", %{tmp_dir: dir} do
+    type = bootstrap(dir)
+    assert {:ok, _} = Store.insert(type, %{"title" => "foo", "body" => "bar"})
+    assert {:ok, _} = Store.insert(type, %{"title" => "foo", "body" => "bar"})
+    assert [%{}, %{}] = Store.list(type)
+    assert :ok = Store.drop_table(type)
+    assert {:error, _} = Store.insert(type, %{"title" => "foo", "body" => "bar"})
+  end
 end
