@@ -7,13 +7,14 @@ defmodule EctoEntity.SqliteTest do
 
   alias EctoEntity.Store
   alias EctoEntity.Type
+  require Logger
 
   defmodule Repo do
     use Ecto.Repo, otp_app: :ecto_entity, adapter: Ecto.Adapters.SQLite3
   end
 
   def activate_repo(dir) do
-    options = [name: nil, database: Path.join(dir, "database.db")]
+    options = [name: nil, database: Path.join(dir, "database.db"), log: false]
     Repo.__adapter__.storage_up(options)
     {:ok, repo} = Repo.start_link(options)
     Repo.put_dynamic_repo(repo)
@@ -26,7 +27,7 @@ defmodule EctoEntity.SqliteTest do
   @plural "posts"
 
   def create_table(repo) do
-    {:ok, _result} = Ecto.Adapters.SQL.query(repo, "create table #{@source} (title text, body text)", [])
+    {:ok, _result} = Ecto.Adapters.SQL.query(repo, "create table #{@source} (id uuid, title text, body text)", [])
   end
 
   defp get_config(tmp_dir, repo) do
@@ -65,7 +66,18 @@ defmodule EctoEntity.SqliteTest do
   @tag :tmp_dir
   test "create", %{tmp_dir: dir} do
     type = bootstrap(dir)
-    assert {:ok, 0} = Store.insert(type, %{"title" => "foo", "body" => "bar"})
+    assert {:ok, entity} = Store.insert(type, %{"title" => "foo", "body" => "bar"})
+    assert %{"id" => _entity_id, "title" => "foo", "body" => "bar"} = entity
     assert [%{"title" => "foo", "body" => "bar"}] = Store.list(type)
+  end
+
+  @tag :tmp_dir
+  test "update", %{tmp_dir: dir} do
+    type = bootstrap(dir)
+    assert {:ok, entity} = Store.insert(type, %{"title" => "foo", "body" => "bar"})
+    assert %{"id" => entity_id, "title" => "foo", "body" => "bar"} = entity
+    assert [%{"id" => ^entity_id, "title" => "foo", "body" => "bar"}] = Store.list(type)
+    assert {:ok, %{"title" => "baz"}} = Store.update(type, entity, title: "baz")
+    assert [%{"id" => ^entity_id, "title" => "baz", "body" => "bar"}] = Store.list(type)
   end
 end

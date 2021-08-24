@@ -54,7 +54,7 @@ defmodule EctoEntity.Store do
       {:ok, result} ->
         result_to_items(definition, result)
 
-      {:error, _} = err ->
+      {:error, _} ->
         # Would be nice to add query info and stuff to this error
         raise Ecto.QueryError
     end
@@ -68,6 +68,7 @@ defmodule EctoEntity.Store do
 
   def insert(%Type{ephemeral: %{store: store}} = definition, entity) when not is_nil(store) do
     repo = set_dynamic(store)
+    new_id = new_id_for_type(definition)
 
     source = cleanse_source(definition)
 
@@ -78,7 +79,14 @@ defmodule EctoEntity.Store do
         key
       end)
       |> Enum.map(&cleanse_field_name/1)
-      |> Enum.join(", ")
+
+    columns = if new_id do
+      ["id" | columns]
+    else
+      columns
+    end
+
+    columns = Enum.join(columns, ", ")
 
     values =
       entity
@@ -93,15 +101,25 @@ defmodule EctoEntity.Store do
       |> Enum.map(fn {_value, index} ->
         "$#{index + 1}"
       end)
-      |> Enum.join(", ")
+
+    {values, value_holders} = if new_id do
+      values = [new_id | values]
+      value_holders = value_holders ++ ["$#{length(values)}"]
+      {values, value_holders}
+    else
+      {values, value_holders}
+    end
+
+    value_holders = Enum.join(value_holders, ", ")
 
     case Ecto.Adapters.SQL.query(
            repo,
-           "insert into #{source} (#{columns}) values (#{value_holders})",
+           "insert into #{source} (#{columns}) values (#{value_holders}) returning *",
            values
          ) do
-      {:ok, %{num_rows: count}} ->
-        {:ok, count}
+      {:ok, result} ->
+        [item] = result_to_items(definition, result)
+        {:ok, item}
 
       {:error, _} = err ->
         err
@@ -149,11 +167,12 @@ defmodule EctoEntity.Store do
 
     case Ecto.Adapters.SQL.query(
            repo,
-           "update #{source} set #{changes} where id=$#{last_index}",
+           "update #{source} set #{changes} where id=$#{last_index} returning *",
            values
          ) do
-      {:ok, %{num_rows: count}} ->
-        {:ok, count}
+      {:ok, result} ->
+        [item] = result_to_items(definition, result)
+        {:ok, item}
 
       {:error, _} = err ->
         err
@@ -214,12 +233,12 @@ defmodule EctoEntity.Store do
     apply(module, :list_types, [settings])
   end
 
-  def migration_status(store, definition) do
+  def migration_status(_store, _definition) do
     # TODO: Lots of questions-marks
     raise "Not implemented"
   end
 
-  def migrate(store, definition) do
+  def migrate(_store, _definition) do
     # TODO: Implement
     raise "Not implemented"
   end
@@ -321,5 +340,16 @@ defmodule EctoEntity.Store do
     # Strip out all expect A-Z a-z 0-9 - _
     # SQL does allow pretty much anything, we don't.
     Regex.replace(~r/[^A-Za-z0-9-_]/, field, "")
+  end
+
+  defp new_id_for_type(definition) do
+    # TODO: Currently assumes single primary key
+    {_field_name, field_options} = Enum.find(definition.fields, fn {_key, field_opts} ->
+      get_in(field_opts, [:persistence_options, :primary_key]) || false
+    end)
+    case field_options.storage_type do
+      "id" -> nil
+      "binary_id" -> UUID.uuid1()
+    end
   end
 end

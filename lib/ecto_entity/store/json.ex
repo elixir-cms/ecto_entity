@@ -95,6 +95,6 @@ defmodule EctoEntity.Store.SimpleJson do
   end
 
   defp ferror(err) do
-    Storage.error(:reading_failed, "File reading error: #{inspect(:file.format_error(err))}")
+    error(:reading_failed, "File reading error: #{inspect(:file.format_error(err))}")
   end
 end

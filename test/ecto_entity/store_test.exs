@@ -203,24 +203,24 @@ defmodule EctoEntity.StoreTest do
     end
 
     test "create", %{type: type} do
-      assert {:ok, 1} = Store.insert(type, %{"title" => "foo", "body" => "bar"})
+      assert {:ok, %{"id" => _}} = Store.insert(type, %{"title" => "foo", "body" => "bar"})
       assert_receive {:query, _, query, params, _}
-      assert "insert into posts (body, title) values ($1, $2)" = String.downcase(query)
-      assert ["bar", "foo"] = params
+      assert "insert into posts (id, body, title) values ($1, $2, $3) returning *" = String.downcase(query)
+      assert [_, "bar", "foo"] = params
     end
 
     test "create with bad source", %{type: type} do
-      assert {:ok, 1} = Store.insert(%{type | source: "posts;!=#"}, %{"title" => "foo"})
+      assert {:ok, %{"id" => _}} = Store.insert(%{type | source: "posts;!=#"}, %{"title" => "foo"})
       assert_receive {:query, _, query, params, _}
-      assert "insert into posts (title) values ($1)" = String.downcase(query)
-      assert ["foo"] = params
+      assert "insert into posts (id, title) values ($1, $2) returning *" = String.downcase(query)
+      assert [_,"foo"] = params
     end
 
     test "create with bad field", %{type: type} do
-      assert {:ok, 1} = Store.insert(type, %{"title';''='" => "foo"})
+      assert {:ok, %{"id" => _}} = Store.insert(type, %{"title';''='" => "foo"})
       assert_receive {:query, _, query, params, _}
-      assert "insert into posts (title) values ($1)" = String.downcase(query)
-      assert ["foo"] = params
+      assert "insert into posts (id, title) values ($1, $2) returning *" = String.downcase(query)
+      assert [_,"foo"] = params
     end
 
     test "list", %{type: type} do
@@ -238,23 +238,23 @@ defmodule EctoEntity.StoreTest do
     end
 
     test "update", %{type: type} do
-      assert {:ok, 1} = Store.update(type, %{"id" => 5}, title: "foo", body: "bar")
+      assert {:ok, %{"id" => _}} = Store.update(type, %{"id" => 5}, title: "foo", body: "bar")
       assert_receive {:query, _, query, params, _}
-      assert "update posts set body=$1, title=$2 where id=$3" = String.downcase(query)
+      assert "update posts set body=$1, title=$2 where id=$3 returning *" = String.downcase(query)
       assert ["bar", "foo", 5] = params
     end
 
     test "update with bad source", %{type: type} do
-      assert {:ok, 1} = Store.update(%{type | source: "posts;!=#"}, %{"id" => 5}, title: "foo")
+      assert {:ok, %{"id" => _}} = Store.update(%{type | source: "posts;!=#"}, %{"id" => 5}, title: "foo")
       assert_receive {:query, _, query, params, _}
-      assert "update posts set title=$1 where id=$2" = String.downcase(query)
+      assert "update posts set title=$1 where id=$2 returning *" = String.downcase(query)
       assert ["foo", 5] = params
     end
 
     test "update with bad field", %{type: type} do
-      assert {:ok, 1} = Store.update(type, %{"id" => 5}, %{"title';''='" => "foo"})
+      assert {:ok, %{"id" => _}} = Store.update(type, %{"id" => 5}, %{"title';''='" => "foo"})
       assert_receive {:query, _, query, params, _}
-      assert "update posts set title=$1 where id=$2" = String.downcase(query)
+      assert "update posts set title=$1 where id=$2 returning *" = String.downcase(query)
       assert ["foo", 5] = params
     end
 
