@@ -32,6 +32,7 @@ defmodule EctoEntity.StoreTest do
     @impl true
     def remove_type(settings, source) do
       assert @settings == settings
+
       with {:ok, _type} <- get_type(settings, source) do
         Process.delete(source)
         :ok
@@ -125,6 +126,7 @@ defmodule EctoEntity.StoreTest do
     @tag :tmp_dir
     test "init", %{tmp_dir: tmp_dir} do
       config = config_json(tmp_dir)
+
       assert %Store{
                config: %{
                  type_storage: %{
@@ -160,6 +162,7 @@ defmodule EctoEntity.StoreTest do
     @tag :tmp_dir
     test "remove type, missing", %{tmp_dir: tmp_dir} do
       config = config_json(tmp_dir)
+
       {:error, err} =
         config
         |> Store.init()
@@ -205,22 +208,27 @@ defmodule EctoEntity.StoreTest do
     test "create", %{type: type} do
       assert {:ok, %{"id" => _}} = Store.insert(type, %{"title" => "foo", "body" => "bar"})
       assert_receive {:query, _, query, params, _}
-      assert "insert into posts (id, body, title) values ($1, $2, $3) returning *" = String.downcase(query)
+
+      assert "insert into posts (id, body, title) values ($1, $2, $3) returning *" =
+               String.downcase(query)
+
       assert [_, "bar", "foo"] = params
     end
 
     test "create with bad source", %{type: type} do
-      assert {:ok, %{"id" => _}} = Store.insert(%{type | source: "posts;!=#"}, %{"title" => "foo"})
+      assert {:ok, %{"id" => _}} =
+               Store.insert(%{type | source: "posts;!=#"}, %{"title" => "foo"})
+
       assert_receive {:query, _, query, params, _}
       assert "insert into posts (id, title) values ($1, $2) returning *" = String.downcase(query)
-      assert [_,"foo"] = params
+      assert [_, "foo"] = params
     end
 
     test "create with bad field", %{type: type} do
       assert {:ok, %{"id" => _}} = Store.insert(type, %{"title';''='" => "foo"})
       assert_receive {:query, _, query, params, _}
       assert "insert into posts (id, title) values ($1, $2) returning *" = String.downcase(query)
-      assert [_,"foo"] = params
+      assert [_, "foo"] = params
     end
 
     test "list", %{type: type} do
@@ -245,7 +253,9 @@ defmodule EctoEntity.StoreTest do
     end
 
     test "update with bad source", %{type: type} do
-      assert {:ok, %{"id" => _}} = Store.update(%{type | source: "posts;!=#"}, %{"id" => 5}, title: "foo")
+      assert {:ok, %{"id" => _}} =
+               Store.update(%{type | source: "posts;!=#"}, %{"id" => 5}, title: "foo")
+
       assert_receive {:query, _, query, params, _}
       assert "update posts set title=$1 where id=$2 returning *" = String.downcase(query)
       assert ["foo", 5] = params
@@ -261,21 +271,21 @@ defmodule EctoEntity.StoreTest do
     test "delete", %{type: type} do
       assert {:ok, 1} = Store.delete(type, %{"id" => 5})
       assert_receive {:query, _, query, params, _}
-      assert "delete from posts where id=$1" = String.downcase(query)
+      assert "delete from posts where id=$1 returning *" = String.downcase(query)
       assert [5] = params
     end
 
     test "delete with bad source", %{type: type} do
       assert {:ok, 1} = Store.delete(%{type | source: "posts;!=#"}, %{"id" => 5})
       assert_receive {:query, _, query, params, _}
-      assert "delete from posts where id=$1" = String.downcase(query)
+      assert "delete from posts where id=$1 returning *" = String.downcase(query)
       assert [5] = params
     end
 
     test "remove all data", %{type: type} do
       assert {:ok, 1} = Store.remove_all_data(type)
       assert_receive {:query, _, query, params, _}
-      assert "delete from posts" = String.downcase(query)
+      assert "delete from posts returning *" = String.downcase(query)
       assert [] = params
     end
 

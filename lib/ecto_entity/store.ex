@@ -80,11 +80,12 @@ defmodule EctoEntity.Store do
       end)
       |> Enum.map(&cleanse_field_name/1)
 
-    columns = if new_id do
-      ["id" | columns]
-    else
-      columns
-    end
+    columns =
+      if new_id do
+        ["id" | columns]
+      else
+        columns
+      end
 
     columns = Enum.join(columns, ", ")
 
@@ -102,13 +103,14 @@ defmodule EctoEntity.Store do
         "$#{index + 1}"
       end)
 
-    {values, value_holders} = if new_id do
-      values = [new_id | values]
-      value_holders = value_holders ++ ["$#{length(values)}"]
-      {values, value_holders}
-    else
-      {values, value_holders}
-    end
+    {values, value_holders} =
+      if new_id do
+        values = [new_id | values]
+        value_holders = value_holders ++ ["$#{length(values)}"]
+        {values, value_holders}
+      else
+        {values, value_holders}
+      end
 
     value_holders = Enum.join(value_holders, ", ")
 
@@ -126,7 +128,8 @@ defmodule EctoEntity.Store do
     end
   end
 
-  def update(%Type{ephemeral: %{store: store}} = definition, %{"id" => id} = _entity, updates_kv) when not is_nil(store) do
+  def update(%Type{ephemeral: %{store: store}} = definition, %{"id" => id} = _entity, updates_kv)
+      when not is_nil(store) do
     updates = Enum.into(updates_kv, %{})
     repo = set_dynamic(store)
 
@@ -139,12 +142,14 @@ defmodule EctoEntity.Store do
         key
       end)
       |> Enum.reduce({[], 1}, fn field, {changes, index} ->
-        field = case field do
-          field when is_atom(field) ->
-            Atom.to_string(field)
-          field when is_binary(field) ->
-            field
-        end
+        field =
+          case field do
+            field when is_atom(field) ->
+              Atom.to_string(field)
+
+            field when is_binary(field) ->
+              field
+          end
 
         field = cleanse_field_name(field)
         change = "#{field}=$#{index}"
@@ -179,13 +184,15 @@ defmodule EctoEntity.Store do
     end
   end
 
-  def delete(%Type{ephemeral: %{store: store}} = definition, %{"id" => id} = _entity) when not is_nil(store) do
+  def delete(%Type{ephemeral: %{store: store}} = definition, %{"id" => id} = _entity)
+      when not is_nil(store) do
     repo = set_dynamic(store)
     source = cleanse_source(definition)
 
     case Ecto.Adapters.SQL.query(
            repo,
-           "delete from #{source} where id=$1",
+           # Note: returning * provides affected row count in SQLite
+           "delete from #{source} where id=$1 returning *",
            [id]
          ) do
       {:ok, %{num_rows: count}} ->
@@ -194,7 +201,6 @@ defmodule EctoEntity.Store do
       {:error, _} = err ->
         err
     end
-
   end
 
   def get_type(store, source) do
@@ -212,10 +218,13 @@ defmodule EctoEntity.Store do
 
   def put_type(store, %{source: source} = definition) do
     {module, settings} = get_storage(store)
+
     case apply(module, :put_type, [settings, definition]) do
       :ok ->
         get_type(store, source)
-      err -> err
+
+      err ->
+        err
     end
   end
 
@@ -249,7 +258,7 @@ defmodule EctoEntity.Store do
 
     case Ecto.Adapters.SQL.query(
            repo,
-           "delete from #{source}",
+           "delete from #{source} returning *",
            []
          ) do
       {:ok, %{num_rows: count}} ->
@@ -344,9 +353,11 @@ defmodule EctoEntity.Store do
 
   defp new_id_for_type(definition) do
     # TODO: Currently assumes single primary key
-    {_field_name, field_options} = Enum.find(definition.fields, fn {_key, field_opts} ->
-      get_in(field_opts, [:persistence_options, :primary_key]) || false
-    end)
+    {_field_name, field_options} =
+      Enum.find(definition.fields, fn {_key, field_opts} ->
+        get_in(field_opts, [:persistence_options, :primary_key]) || false
+      end)
+
     case field_options.storage_type do
       "id" -> nil
       "binary_id" -> UUID.uuid1()

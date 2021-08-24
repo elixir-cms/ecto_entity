@@ -68,7 +68,8 @@ defmodule EctoEntity.Store.SimpleJson do
     filepath = Path.join(path, "#{source}.json")
 
     case File.rm(filepath) do
-      :ok -> :ok
+      :ok ->
+        :ok
 
       {:error, :enoent} ->
         {:error, error(:not_found, "File not found")}
