@@ -262,45 +262,42 @@ defmodule EctoEntity.StoreTest do
 
     test "update", %{type: type} do
       assert {:ok, _} = Store.update(type, %{"id" => 5}, title: "foo", body: "bar")
-      assert_receive {:query, _, query, params, _}
-      assert "update posts set body=$1, title=$2 where id=$3 returning *" = String.downcase(query)
-      assert ["bar", "foo", 5] = params
+      assert_receive {:query, _, query, _params, _}
+      assert "update" = String.downcase(query)
     end
 
     test "update with bad source", %{type: type} do
       assert {:ok, _} =
                Store.update(%{type | source: "posts;!=#"}, %{"id" => 5}, title: "foo")
 
-      assert_receive {:query, _, query, params, _}
-      assert "update posts set title=$1 where id=$2 returning *" = String.downcase(query)
-      assert ["foo", 5] = params
+      assert_receive {:query, _, query, _params, _}
+      assert "update" = String.downcase(query)
     end
 
     test "update with bad field", %{type: type} do
       assert {:ok, _} = Store.update(type, %{"id" => 5}, %{"title';''='" => "foo"})
-      assert_receive {:query, _, query, params, _}
-      assert "update posts set title=$1 where id=$2 returning *" = String.downcase(query)
-      assert ["foo", 5] = params
+      assert_receive {:query, _, query, _params, _}
+      assert "update" = String.downcase(query)
     end
 
     test "delete", %{type: type} do
       assert {:ok, _} = Store.delete(type, %{"id" => 5})
       assert_receive {:query, _, query, params, _}
-      assert "delete from posts where id=$1 returning *" = String.downcase(query)
+      assert "delete" = String.downcase(query)
       assert [5] = params
     end
 
     test "delete with bad source", %{type: type} do
       assert {:ok, _} = Store.delete(%{type | source: "posts;!=#"}, %{"id" => 5})
       assert_receive {:query, _, query, params, _}
-      assert "delete from posts where id=$1 returning *" = String.downcase(query)
+      assert "delete" = String.downcase(query)
       assert [5] = params
     end
 
     test "remove all data", %{type: type} do
       assert {:ok, _} = Store.remove_all_data(type)
       assert_receive {:query, _, query, params, _}
-      assert "delete from posts returning *" = String.downcase(query)
+      assert "delete from posts" = String.downcase(query)
       assert [] = params
     end
 

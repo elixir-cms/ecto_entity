@@ -101,22 +101,20 @@ defmodule EctoEntity.Store do
         values
       end
 
-      connection_module = store.config.repo.module.__adapter__()
-                          |> Module.concat(Connection)
+      connection_module = get_connection(store)
 
       prefix = nil
       sql = connection_module.insert(prefix, source, columns, [values], {:raise, nil, []}, [], [])
 
       case Ecto.Adapters.SQL.query(
            repo,
-           #"insert into #{source} (#{columns}) values (#{value_holders}) returning *",
            sql,
            values
          ) do
       {:ok, _result} ->
         # This could be done with RETURNING *, but that doesn't work in MySQL
         #[item] = result_to_items(definition, result)
-        {:ok, nil}
+        {:ok, new_id}
 
       {:error, _} = err ->
         err
@@ -126,55 +124,27 @@ defmodule EctoEntity.Store do
   def update(%Type{ephemeral: %{store: store}} = definition, %{"id" => id} = _entity, updates_kv)
       when not is_nil(store) do
     updates = Enum.into(updates_kv, %{})
+    fields = Map.keys(updates)
+    values = Map.values(updates)
+
     repo = set_dynamic(store)
 
     source = cleanse_source(definition)
 
-    {changes, last_index} =
-      updates
-      |> Enum.sort()
-      |> Enum.map(fn {key, _value} ->
-        key
-      end)
-      |> Enum.reduce({[], 1}, fn field, {changes, index} ->
-        field =
-          case field do
-            field when is_atom(field) ->
-              Atom.to_string(field)
+    connection_module = get_connection(store)
 
-            field when is_binary(field) ->
-              field
-          end
-
-        field = cleanse_field_name(field)
-        change = "#{field}=$#{index}"
-        {[change | changes], index + 1}
-      end)
-
-    changes =
-      changes
-      |> Enum.reverse()
-      |> Enum.join(", ")
-
-    values =
-      updates
-      |> Enum.sort()
-      |> Enum.map(fn {_key, value} ->
-        value
-      end)
-
-    values = values ++ [id]
-
-
+    prefix = nil
+    sql = connection_module.update(prefix, source, fields, [id: id], [])
 
     case Ecto.Adapters.SQL.query(
-           repo,
-           "update #{source} set #{changes} where id=$#{last_index} returning *",
-           values
-         ) do
-      {:ok, result} ->
-        [item] = result_to_items(definition, result)
-        {:ok, item}
+         repo,
+         sql,
+         values ++ [id]
+       ) do
+      {:ok, _new_id} ->
+        # This could be done with RETURNING *, but that doesn't work in MySQL
+        #[item] = result_to_items(definition, result)
+        {:ok, nil}
 
       {:error, _} = err ->
         err
@@ -186,14 +156,18 @@ defmodule EctoEntity.Store do
     repo = set_dynamic(store)
     source = cleanse_source(definition)
 
+    connection_module = get_connection(store)
+
+    prefix = nil
+    sql = connection_module.delete(prefix, source, [id: id], [])
+
     case Ecto.Adapters.SQL.query(
-           repo,
-           # Note: returning * provides affected row count in SQLite
-           "delete from #{source} where id=$1 returning *",
-           [id]
-         ) do
-      {:ok, %{num_rows: count}} ->
-        {:ok, count}
+         repo,
+         sql,
+         [id]
+       ) do
+      {:ok, _result} ->
+        {:ok, nil}
 
       {:error, _} = err ->
         err
@@ -255,11 +229,11 @@ defmodule EctoEntity.Store do
 
     case Ecto.Adapters.SQL.query(
            repo,
-           "delete from #{source} returning *",
+           "delete from #{source}",
            []
          ) do
-      {:ok, %{num_rows: count}} ->
-        {:ok, count}
+      {:ok, _} ->
+        {:ok, nil}
 
       {:error, _} = err ->
         err
@@ -359,5 +333,9 @@ defmodule EctoEntity.Store do
       "id" -> nil
       "string" -> UUID.uuid1()
     end
+  end
+
+  defp get_connection(store) do
+    Module.concat(store.config.repo.module.__adapter__(), Connection)
   end
 end
